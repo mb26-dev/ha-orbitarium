@@ -21,7 +21,8 @@ A live planetarium for Home Assistant. Orbitarium shows **every Starlink and tho
 Everything is calculated locally in Home Assistant and in your browser. No API key, no account, no cloud service besides the public orbital data from CelesTrak.
 
 <p align="center">
-  <img src="docs/images/dome.png" alt="Orbitarium dome view: the whole night sky with constellations, planets, the Moon and Starlink satellites" width="100%">
+  <img src="docs/images/globe-debris.jpg" alt="Globe view with more than 10,000 pieces of space debris around the Earth and the info card of a Long March 6A debris fragment" width="100%">
+  <br><em>Debris switched on: more than 10,000 tracked fragments around the Earth, here a piece of a Long March 6A upper stage</em>
 </p>
 
 ## Screenshots
@@ -32,8 +33,8 @@ Everything is calculated locally in Home Assistant and in your browser. No API k
 </p>
 
 <p align="center">
-  <img src="docs/images/globe-debris.jpg" alt="Globe view with more than 10,000 pieces of space debris around the Earth and the info card of a Long March 6A debris fragment" width="100%">
-  <br><em>Debris switched on: more than 10,000 tracked fragments around the Earth, here a piece of a Long March 6A upper stage</em>
+  <img src="docs/images/dome.png" alt="Orbitarium dome view: the whole night sky with constellations, planets, the Moon and Starlink satellites" width="100%">
+  <br><em>Dome view: the whole night sky with constellations, planets, the Moon and Starlink satellites</em>
 </p>
 
 | | |
