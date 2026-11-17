@@ -40,7 +40,7 @@ from .data import OrbitariumData
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -89,10 +89,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def _refresh(_now=None) -> None:
         if data.needs_refresh():
             await data.async_refresh_catalog()
+        else:
+            # keep the repair issues up to date even while nothing is downloaded
+            data.async_update_repairs()
         await data.async_ensure_sky()
         await data.async_ensure_earth()
 
-    if not data.rows:
+    if not data.rows and not data.in_backoff():
         # very first start: get the satellite data before the sensors are created
         try:
             async with asyncio.timeout(60):

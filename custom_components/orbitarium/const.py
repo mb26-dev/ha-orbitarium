@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "orbitarium"
-VERSION = "1.2.1"
+VERSION = "1.3.0"
 
 CONF_GROUPS = "groups"
 CONF_TRACKED = "tracked_satellites"
@@ -35,6 +35,11 @@ CELESTRAK_CATNR_URL = "https://celestrak.org/NORAD/elements/gp.php?CATNR={catnr}
 # download unchanged data too often - keep this conservative.
 TLE_REFRESH_HOURS = 12
 TLE_RETRY_MINUTES = 60
+# after a failed download (error, rate limit, server problem) CelesTrak is not
+# asked again for this long, also across restarts
+CELESTRAK_BACKOFF_HOURS = 6
+# a tracked satellite missing from CelesTrak for this long raises a repair issue
+SATELLITE_LOST_HOURS = 24
 
 # Star catalogue, constellation lines and names from d3-celestial (BSD-3-Clause),
 # pinned to a fixed commit so the data never changes underneath us.
@@ -80,5 +85,7 @@ CARD_FILE = "orbitarium-card.js"
 SIGNAL_CATALOG_UPDATED = f"{DOMAIN}_catalog_updated"
 
 OVERHEAD_SCAN_SECONDS = 120
+# update interval while a tracked satellite is up or about to rise
+PASS_SCAN_SECONDS = 10
 PASS_REFRESH_MINUTES = 15
 PASS_HORIZON_HOURS = 72

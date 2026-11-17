@@ -8,13 +8,12 @@ from typing import Any
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, SIGNAL_CATALOG_UPDATED, VERSION
+from .const import DOMAIN, SIGNAL_CATALOG_UPDATED
 from .coordinator import OrbitariumCoordinator
+from .entity import OrbitariumEntity, satellite_name
 from .orbit import Pass, compass
 
 
@@ -29,14 +28,6 @@ def _iso(ts: float | None) -> str | None:
     return dt.isoformat() if dt else None
 
 
-KNOWN_NAMES = {25544: "ISS", 48274: "Tiangong", 20580: "Hubble"}
-
-
-def _short_name(name: str) -> str:
-    base = name.split(" (")[0].strip()
-    return base or name
-
-
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator: OrbitariumCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list[SensorEntity] = [
@@ -47,24 +38,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     for norad in coordinator.sky_data.tracked:
         entities.append(PassSensor(coordinator, entry, norad))
     async_add_entities(entities)
-
-
-class OrbitariumEntity(CoordinatorEntity[OrbitariumCoordinator]):
-    """Base entity."""
-
-    _attr_has_entity_name = True
-
-    def __init__(self, coordinator: OrbitariumCoordinator, entry: ConfigEntry, key: str) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = f"{entry.entry_id}_{key}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name="Orbitarium",
-            manufacturer="Orbitarium",
-            model="CelesTrak GP data",
-            sw_version=VERSION,
-            entry_type=DeviceEntryType.SERVICE,
-        )
 
 
 class CatalogSensor(OrbitariumEntity, SensorEntity):
@@ -98,6 +71,7 @@ class CatalogSensor(OrbitariumEntity, SensorEntity):
             "data_updated": _iso(data.catalog_updated or None),
             "last_attempt": _iso(data.last_attempt or None),
             "last_error": data.last_error,
+            "next_download_attempt": _iso(data.retry_after) if data.in_backoff() else None,
             "stars_loaded": len(data.sky["stars"]) if data.sky else 0,
             "earth_imagery": data.earth_status(),
             "source": "CelesTrak",
@@ -124,7 +98,7 @@ class OverheadSensor(OrbitariumEntity, SensorEntity):
         state = self.coordinator.data
         return {
             "sun_elevation": round(state.sun_elevation, 1),
-            "computed_at": _iso(state.computed_at or None),
+            "computed_at": _iso(state.overhead_computed_at or None),
         }
 
 
@@ -157,15 +131,12 @@ class PassSensor(OrbitariumEntity, SensorEntity):
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:space-station"
+    _attr_translation_key = "next_visible_pass"
 
     def __init__(self, coordinator: OrbitariumCoordinator, entry: ConfigEntry, norad: int) -> None:
         super().__init__(coordinator, entry, f"pass_{norad}")
         self._norad = norad
-        name = KNOWN_NAMES.get(norad)
-        if name is None:
-            catalog_name = coordinator.sky_data.name_of(norad)
-            name = _short_name(catalog_name) if catalog_name else f"NORAD {norad}"
-        self._attr_name = f"{name} next visible pass"
+        self._attr_translation_placeholders = {"satellite": satellite_name(coordinator, norad)}
 
     def _next_visible(self) -> Pass | None:
         for p in self.coordinator.data.passes.get(self._norad, []):
