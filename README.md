@@ -68,8 +68,13 @@ All screenshots use real orbital data from CelesTrak, seen from Ao Nang, Thailan
 | Satellites above horizon | satellites above your horizon right now | sun elevation |
 | Satellites visible now | sunlit satellites above 10° while the sky is dark | list of the 15 highest ones |
 | `<name>` next visible pass | start of the next naked-eye visible pass (timestamp) | max elevation, directions, duration, next 5 visible passes |
+| `<name>` visible now (binary sensor) | on while the satellite is above the minimum pass elevation, sunlit and your sky is dark | elevation, azimuth, direction, range, sunlit, sun elevation |
 
-Pass sensors are created for every NORAD id you enter (default: ISS `25544` and Tiangong `48274`).
+Pass sensors and visible now binary sensors are created for every NORAD id you enter (default: ISS `25544` and Tiangong `48274`). While one of them is up or about to rise, Orbitarium updates every 10 seconds instead of every 2 minutes, so automations react right when the pass starts.
+
+If CelesTrak no longer lists a tracked satellite for more than a day (re-entered, retired or a wrong id), Home Assistant shows a repair notice. It disappears by itself when the satellite is listed again.
+
+The integration is translated into English and German.
 
 ## Installation
 
@@ -108,10 +113,10 @@ All settings are done in the UI and can be changed later under **Configure**:
 | Option | Default | Description |
 | --- | --- | --- |
 | Satellite groups | Space stations, Brightest, Starlink | CelesTrak groups to load. Starlink alone has more than 11,000 satellites. |
-| Pass predictions for | `25544, 48274` | NORAD ids that get a "next visible pass" sensor |
+| Pass predictions for | `25544, 48274` | NORAD ids that get a "next visible pass" sensor and a "visible now" binary sensor |
 | Minimum pass elevation | 10° | Lower passes are ignored |
 
-Orbital data is refreshed every 12 hours and cached, so restarts do not download anything again. The star catalogue and the NASA Earth images (about 3 MB) are downloaded once and then kept locally; the day image is renewed once a month.
+Orbital data is refreshed every 12 hours and cached, so restarts do not download anything again. After a failed download (server error or rate limit) CelesTrak is not asked again for 6 hours, also across restarts; the attribute `next_download_attempt` on *Satellites tracked* shows when. The star catalogue and the NASA Earth images (about 3 MB) are downloaded once and then kept locally; the day image is renewed once a month.
 
 The observer location is your Home Assistant home location.
 
@@ -169,6 +174,21 @@ groups:
 - With more than 1,800 satellites on screen the card switches from icons to dots automatically.
 
 ## Automation example
+
+Turn on the garden lights while the ISS is visible:
+
+```yaml
+alias: ISS visible, garden lights on
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.orbitarium_iss_visible_now
+    to: "on"
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.garden
+mode: single
+```
 
 Get a notification 10 minutes before the ISS is visible:
 
