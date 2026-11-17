@@ -19,7 +19,7 @@ import {
   planetPositions,
   isSunlit,
   bvToColor,
-} from "./orbitarium-core.js?v=1.1.0";
+} from "./orbitarium-core.js?v=1.2.0";
 import {
   KIND_FLAT,
   isStationKind,
@@ -29,9 +29,10 @@ import {
   BODY_FACTS,
   bodyPicture,
   moonPhaseName,
-} from "./orbitarium-art.js?v=1.1.0";
+} from "./orbitarium-art.js?v=1.2.0";
+import { loadEarth, renderEarth } from "./orbitarium-earth.js?v=1.2.0";
 
-const CARD_VERSION = "1.1.0";
+const CARD_VERSION = "1.2.0";
 const GOLD = "#d4af37";
 const WARP_STEPS = [-600, -120, -30, -5, 0, 1, 5, 30, 120, 600];
 const CARDINALS = [
@@ -48,6 +49,9 @@ const SHARED = {
   catalog: null,
   catalogPromise: null,
   catalogLoadedAt: 0,
+  earth: null,
+  earthPromise: null,
+  earthRetryAt: 0,
 };
 
 async function apiGet(hass, path) {
@@ -768,6 +772,7 @@ class OrbitariumCard extends HTMLElement {
     // ---------------- globe ----------------
     if (globe) {
       this._starScreen = [];
+      this._maybeLoadEarth();
       if (this._sky) this._drawGlobeStars(ctx, G, jd, theta, P);
       this._drawGlobe(ctx, G, sun.dir, theta, lat, lon);
     }
@@ -1265,8 +1270,36 @@ class OrbitariumCard extends HTMLElement {
     }
   }
 
+  _maybeLoadEarth() {
+    if (SHARED.earth || SHARED.earthPromise || !this._hass || Date.now() < SHARED.earthRetryAt) return;
+    SHARED.earthPromise = loadEarth(this._hass)
+      .then((earth) => {
+        SHARED.earth = earth;
+        this._earthKey = null;
+      })
+      .catch(() => {
+        // not downloaded yet or offline: keep the outline globe, try again later
+        SHARED.earthRetryAt = Date.now() + 120000;
+      })
+      .finally(() => {
+        SHARED.earthPromise = null;
+      });
+  }
+
+  /** NASA imagery globe, re-rendered when the view or the sun moves */
+  _globeTexture(G, sunE) {
+    const size = clamp(Math.round(2 * G.R * Math.min(this._dpr, 1.5)), 64, 760);
+    const key = `${size}|${G.view.map((x) => x.toFixed(4)).join(",")}|${sunE.map((x) => x.toFixed(3)).join(",")}`;
+    if (this._earthCanvas && this._earthKey === key) return this._earthCanvas;
+    this._earthCanvas = this._earthCanvas || document.createElement("canvas");
+    renderEarth(this._earthCanvas, SHARED.earth, G, sunE, size);
+    this._earthKey = key;
+    return this._earthCanvas;
+  }
+
   _drawGlobe(ctx, G, sunDir, theta, lat, lon) {
     const { cx, cy, R } = G;
+    const earth = SHARED.earth;
     // atmosphere
     const ag = ctx.createRadialGradient(cx, cy, R * 0.97, cx, cy, R * 1.13);
     ag.addColorStop(0, "rgba(120,180,255,0.45)");
@@ -1276,6 +1309,18 @@ class OrbitariumCard extends HTMLElement {
     ctx.beginPath();
     ctx.arc(cx, cy, R * 1.13, 0, TWO_PI);
     ctx.fill();
+    if (earth) {
+      const sunE0 = [sunDir[0] * G.c + sunDir[1] * G.s, -sunDir[0] * G.s + sunDir[1] * G.c, sunDir[2]];
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, 0, TWO_PI);
+      ctx.clip();
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(this._globeTexture(G, sunE0), cx - R, cy - R, 2 * R, 2 * R);
+      ctx.restore();
+      this._drawHome(ctx, G, lat, lon);
+      return;
+    }
     // ocean
     const og = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.4, R * 0.05, cx, cy, R);
     og.addColorStop(0, "#245a9c");
@@ -1372,6 +1417,11 @@ class OrbitariumCard extends HTMLElement {
     ctx.arc(cx, cy, R, 0, TWO_PI);
     ctx.stroke();
 
+    this._drawHome(ctx, G, lat, lon);
+  }
+
+  _drawHome(ctx, G, lat, lon) {
+    const { cx, cy, R } = G;
     // home marker
     const la = lat * DEG;
     const lo = lon * DEG;
