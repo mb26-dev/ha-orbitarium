@@ -10,6 +10,7 @@
           "min_elevation": "Minimum pass elevation"
         },
         "data_description": {
+          "groups": "Rocket bodies and Debris add spent rocket stages and fragments (about 12,500 objects together). They are drawn as small dots; debris is never counted as visible.",
           "tracked_satellites": "25544 = ISS, 48274 = Tiangong, 20580 = Hubble. Each id gets a 'next visible pass' sensor and a 'visible now' binary sensor.",
           "min_elevation": "Passes lower than this above the horizon are ignored."
         }
@@ -34,6 +35,7 @@
           "min_elevation": "Minimum pass elevation"
         },
         "data_description": {
+          "groups": "Rocket bodies and Debris add spent rocket stages and fragments (about 12,500 objects together). They are drawn as small dots; debris is never counted as visible.",
           "tracked_satellites": "25544 = ISS, 48274 = Tiangong, 20580 = Hubble. Each id gets a 'next visible pass' sensor and a 'visible now' binary sensor.",
           "min_elevation": "Passes lower than this above the horizon are ignored."
         }

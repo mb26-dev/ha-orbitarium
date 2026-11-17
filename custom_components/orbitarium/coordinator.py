@@ -16,6 +16,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
     DOMAIN,
+    NOT_VISIBLE_GROUPS,
     OVERHEAD_SCAN_SECONDS,
     PASS_HORIZON_HOURS,
     PASS_SCAN_SECONDS,
@@ -73,8 +74,10 @@ def compute_overhead(data: OrbitariumData, obs: Observer, now: float) -> tuple[i
         if el <= 0:
             continue
         above += 1
+        name, group = names.get(norad, (str(norad), ""))
+        if group in NOT_VISIBLE_GROUPS:
+            continue
         if dark and el >= 10.0 and is_sunlit(r, sun) and math.sqrt(r[0] ** 2 + r[1] ** 2 + r[2] ** 2) < 6371.0 + 2000.0:
-            name, group = names.get(norad, (str(norad), ""))
             visible.append({
                 "name": name,
                 "norad": norad,

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import gzip
 import json
 import logging
+import re
 from pathlib import Path
 import time
 from typing import Any
@@ -24,13 +25,18 @@ from .const import (
     CELESTRAK_BACKOFF_HOURS,
     CELESTRAK_CATNR_URL,
     CELESTRAK_GROUP_URL,
+    CELESTRAK_QUERY_URL,
     D3C_BASE,
     DOMAIN,
+    DOT_GROUPS,
     EARTH_DAY_FALLBACK_MONTH,
     EARTH_DAY_URL,
     EARTH_DIR,
     EARTH_NIGHT_URL,
+    GROUP_NAME_PATTERNS,
+    GROUP_QUERIES,
     LAND_URL,
+    NOT_VISIBLE_GROUPS,
     SATELLITE_GROUPS,
     SATELLITE_LOST_HOURS,
     SIGNAL_CATALOG_UPDATED,
@@ -300,7 +306,10 @@ class OrbitariumData:
             for group in self.groups:
                 if not force and now - self.group_updated.get(group, 0.0) <= TLE_REFRESH_HOURS * 3600:
                     continue
-                url = CELESTRAK_GROUP_URL.format(group=group)
+                if group in GROUP_QUERIES:
+                    url = CELESTRAK_QUERY_URL.format(query=GROUP_QUERIES[group])
+                else:
+                    url = CELESTRAK_GROUP_URL.format(group=group)
                 rows, _missing = await self._fetch_omm(session, url, errors, group)
                 if rows is not None:
                     self.group_rows[group] = rows
@@ -583,7 +592,16 @@ class OrbitariumData:
         payload = {
             "version": VERSION,
             "updated": updated,
-            "groups": [{"key": k, "name": labels[k][0], "color": labels[k][1]} for k in group_keys],
+            "groups": [
+                {
+                    "key": k,
+                    "name": labels[k][0],
+                    "color": labels[k][1],
+                    "dots": k in DOT_GROUPS,
+                    "visible": k not in NOT_VISIBLE_GROUPS,
+                }
+                for k in group_keys
+            ],
             "tracked": self.tracked,
             "sats": rows,
         }
@@ -607,6 +625,10 @@ class OrbitariumData:
             return [r for r in self.group_rows.get("stations", []) if is_station(r[0], r[1])]
         if key == STATION_TRAFFIC_GROUP[0]:
             return [r for r in self.group_rows.get("stations", []) if not is_station(r[0], r[1])]
+        if key in GROUP_NAME_PATTERNS:
+            # the name search also finds names that merely contain the letters
+            pattern = re.compile(GROUP_NAME_PATTERNS[key])
+            return [r for r in self.group_rows.get(key, []) if pattern.search(str(r[1]).upper())]
         return self.group_rows.get(key, [])
 
     def _rebuild_sky_gzip(self) -> None:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "orbitarium"
-VERSION = "1.3.1"
+VERSION = "1.4.0"
 
 CONF_GROUPS = "groups"
 CONF_TRACKED = "tracked_satellites"
@@ -25,7 +25,17 @@ SATELLITE_GROUPS: list[tuple[str, str, str]] = [
     ("geo", "Geostationary", "#ef9a9a"),
     ("weather", "Weather", "#90caf9"),
     ("amateur", "Amateur radio", "#f48fb1"),
+    ("rocket-bodies", "Rocket bodies", "#c9a27e"),
+    ("debris", "Debris", "#ef7070"),
 ]
+# groups without their own CelesTrak group: loaded with a name search instead
+# (CelesTrak appends "R/B" to rocket bodies and "DEB" to debris)
+GROUP_QUERIES = {"rocket-bodies": "NAME=R/B", "debris": "NAME=DEB"}
+GROUP_NAME_PATTERNS = {"rocket-bodies": r"\bR/B\b", "debris": r"\bDEB\b"}
+# drawn as small dots in the card instead of satellite icons
+DOT_GROUPS = {"rocket-bodies", "debris"}
+# far too small to be seen with the naked eye: never counted as visible
+NOT_VISIBLE_GROUPS = {"debris"}
 TRACKED_GROUP = ("tracked", "Tracked", "#ffd166")
 # The CelesTrak "stations" group also lists docked and visiting spacecraft and
 # small satellites released from the ISS. Only the stations themselves stay in
@@ -37,6 +47,7 @@ STATION_NORADS = {25544, 48274, 36086}
 
 CELESTRAK_GROUP_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=json"
 CELESTRAK_CATNR_URL = "https://celestrak.org/NORAD/elements/gp.php?CATNR={catnr}&FORMAT=json"
+CELESTRAK_QUERY_URL = "https://celestrak.org/NORAD/elements/gp.php?{query}&FORMAT=json"
 
 # CelesTrak updates GP data a few times per day and blocks clients that
 # download unchanged data too often - keep this conservative.
