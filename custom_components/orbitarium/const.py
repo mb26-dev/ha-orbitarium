@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "orbitarium"
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 
 CONF_GROUPS = "groups"
 CONF_TRACKED = "tracked_satellites"
@@ -49,7 +49,7 @@ SKY_FILES = {
 # Land outlines for the globe view: Natural Earth 1:110m (public domain),
 # pinned to a release tag.
 LAND_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_110m_land.geojson"
-SKY_DATA_VERSION = 2
+SKY_DATA_VERSION = 3
 
 # Earth imagery for the globe view, NASA Earth Observatory (free of licensing
 # fees, credit "NASA Earth Observatory"). Downloaded at runtime, not shipped.

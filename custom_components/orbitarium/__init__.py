@@ -125,16 +125,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unloaded
 
 
-def _gzip_response(request: web.Request, payload: bytes | None, missing: str) -> web.Response:
-    if payload is None:
+def _json_response(request: web.Request, gzipped: bytes | None, plain: bytes | None, missing: str) -> web.Response:
+    """Serve a prepared catalogue. Both copies are built in the executor beforehand."""
+    if gzipped is None or plain is None:
         return web.json_response({"error": missing}, status=503)
     headers = {"Cache-Control": "no-cache", "Content-Type": "application/json"}
     if "gzip" in request.headers.get("Accept-Encoding", ""):
         headers["Content-Encoding"] = "gzip"
-        return web.Response(body=payload, headers=headers)
-    import gzip  # local import, rarely used path
-
-    return web.Response(body=gzip.decompress(payload), headers=headers)
+        return web.Response(body=gzipped, headers=headers)
+    return web.Response(body=plain, headers=headers)
 
 
 class OrbitariumCatalogView(HomeAssistantView):
@@ -150,7 +149,7 @@ class OrbitariumCatalogView(HomeAssistantView):
         data: OrbitariumData | None = hass.data.get(DOMAIN, {}).get("data")
         if data is None:
             return web.json_response({"error": "Orbitarium is not configured"}, status=404)
-        return _gzip_response(request, data.catalog_gzip, "Satellite data not loaded yet")
+        return _json_response(request, data.catalog_gzip, data.catalog_json, "Satellite data not loaded yet")
 
 
 class OrbitariumSkyView(HomeAssistantView):
@@ -166,7 +165,7 @@ class OrbitariumSkyView(HomeAssistantView):
         data: OrbitariumData | None = hass.data.get(DOMAIN, {}).get("data")
         if data is None:
             return web.json_response({"error": "Orbitarium is not configured"}, status=404)
-        return _gzip_response(request, data.sky_gzip, "Star catalogue not loaded yet")
+        return _json_response(request, data.sky_gzip, data.sky_json, "Star catalogue not loaded yet")
 
 
 class OrbitariumEarthView(HomeAssistantView):

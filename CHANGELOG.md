@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.1
+
+### Fixed
+
+- **No more event loop stalls on slow hardware:** the CelesTrak responses (Starlink alone is several megabytes of JSON) and the star catalogue files are now parsed in the executor instead of on the Home Assistant event loop.
+- The catalogue and star catalogue API views no longer decompress data on the event loop for clients without gzip support; a plain copy is prepared in the executor next to the gzip copy.
+- Group counts and satellite names for the sensors come from a prepared index instead of scanning the whole catalogue on every update.
+
+### Changed
+
+- Constellation names now use their Latin names throughout (Cetus, Taurus, Sagittarius instead of a mix of English and Latin). The star catalogue is downloaded again once after the update.
+
 ## 1.2.0
 
 ### Added
@@ -42,7 +54,7 @@
 - Sensors: satellites tracked, satellites above horizon, satellites visible now, next visible pass per tracked satellite (ISS and Tiangong by default).
 - Lovelace card `custom:orbitarium-card`, registered automatically:
   - planetarium style dome and horizon views with atmosphere, twilight glow and ground
-  - stars down to magnitude 6, constellation lines and names, Sun, Moon with phase, planets
+  - stars down to magnitude 6, constellation lines and names, Sun, Moon with its current phase, planets
   - all satellites in real time, highlighted when they are visible to the naked eye
   - tap for details, orbit track of the selected satellite
   - group filter, time travel (pause, fast forward, reverse), zoom, fullscreen
