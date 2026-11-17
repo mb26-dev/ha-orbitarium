@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "orbitarium"
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 
 CONF_GROUPS = "groups"
 CONF_TRACKED = "tracked_satellites"
@@ -27,6 +27,13 @@ SATELLITE_GROUPS: list[tuple[str, str, str]] = [
     ("amateur", "Amateur radio", "#f48fb1"),
 ]
 TRACKED_GROUP = ("tracked", "Tracked", "#ffd166")
+# The CelesTrak "stations" group also lists docked and visiting spacecraft and
+# small satellites released from the ISS. Only the stations themselves stay in
+# "Space stations", everything else goes to this derived group.
+STATION_TRAFFIC_GROUP = ("station_traffic", "Station traffic", "#ffb38a")
+STATION_NAME_PREFIXES = ("ISS (", "CSS (")
+# ISS, Tiangong core module (Tianhe) and the ISS module Poisk (listed without prefix)
+STATION_NORADS = {25544, 48274, 36086}
 
 CELESTRAK_GROUP_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=json"
 CELESTRAK_CATNR_URL = "https://celestrak.org/NORAD/elements/gp.php?CATNR={catnr}&FORMAT=json"

@@ -36,6 +36,9 @@ from .const import (
     SIGNAL_CATALOG_UPDATED,
     SKY_DATA_VERSION,
     SKY_FILES,
+    STATION_NAME_PREFIXES,
+    STATION_NORADS,
+    STATION_TRAFFIC_GROUP,
     STAR_NAME_MAX_MAG,
     STORAGE_KEY_CATALOG,
     STORAGE_KEY_SKY,
@@ -109,6 +112,11 @@ def parse_omm_text(text: str) -> list[list[Any]]:
 def is_missing_response(text: str) -> bool:
     """CelesTrak answers an unknown or decayed catalogue number with this text."""
     return text.strip().lower().startswith("no gp data found")
+
+
+def is_station(norad: int, name: str) -> bool:
+    """True for the space stations themselves (ISS, Tiangong and their modules)."""
+    return norad in STATION_NORADS or str(name).upper().startswith(STATION_NAME_PREFIXES)
 
 
 def parse_sky_texts(texts: dict[str, str]) -> dict[str, Any]:
@@ -541,7 +549,12 @@ class OrbitariumData:
     # ---------------------------------------------------------------- building
 
     def _rebuild(self) -> None:
-        group_keys = [g for g, _, _ in SATELLITE_GROUPS if g in self.groups]
+        group_keys: list[str] = []
+        for g, _, _ in SATELLITE_GROUPS:
+            if g in self.groups:
+                group_keys.append(g)
+                if g == "stations":
+                    group_keys.append(STATION_TRAFFIC_GROUP[0])
         if self.tracked:
             group_keys.append("tracked")
         seen: dict[int, int] = {}
@@ -551,7 +564,7 @@ class OrbitariumData:
         order = sorted(range(len(group_keys)), key=lambda i: group_keys[i] != "tracked")
         for gi in order:
             key = group_keys[gi]
-            for row in self.group_rows.get(key, []):
+            for row in self._group_source(key):
                 if row[0] in seen:
                     continue
                 if key == "tracked" and row[0] not in self.tracked:
@@ -565,6 +578,7 @@ class OrbitariumData:
                 satrecs[row[0]] = rec
         labels = {g: (lbl, col) for g, lbl, col in SATELLITE_GROUPS}
         labels[TRACKED_GROUP[0]] = (TRACKED_GROUP[1], TRACKED_GROUP[2])
+        labels[STATION_TRAFFIC_GROUP[0]] = (STATION_TRAFFIC_GROUP[1], STATION_TRAFFIC_GROUP[2])
         updated = max([self.group_updated.get(k, 0.0) for k in group_keys] or [0.0])
         payload = {
             "version": VERSION,
@@ -586,6 +600,14 @@ class OrbitariumData:
         self.catalog_json = catalog_json
         self.catalog_gzip = gzip.compress(catalog_json, 6)
         self._rebuild_sky_gzip()
+
+    def _group_source(self, key: str) -> list[list[Any]]:
+        """Rows of one group; the CelesTrak stations group is split in two."""
+        if key == "stations":
+            return [r for r in self.group_rows.get("stations", []) if is_station(r[0], r[1])]
+        if key == STATION_TRAFFIC_GROUP[0]:
+            return [r for r in self.group_rows.get("stations", []) if not is_station(r[0], r[1])]
+        return self.group_rows.get(key, [])
 
     def _rebuild_sky_gzip(self) -> None:
         if self.sky is not None:
