@@ -3,14 +3,14 @@
     "step": {
       "user": {
         "title": "Orbitarium",
-        "description": "Choose which satellite groups to load from CelesTrak. Positions are calculated locally for your Home Assistant location. Starlink alone has close to ten thousand satellites.",
+        "description": "Choose which satellite groups to load from CelesTrak. Positions are calculated locally for your Home Assistant location. Starlink alone has more than eleven thousand satellites.",
         "data": {
           "groups": "Satellite groups",
           "tracked_satellites": "Pass predictions for (NORAD ids, comma separated)",
           "min_elevation": "Minimum pass elevation"
         },
         "data_description": {
-          "tracked_satellites": "25544 = ISS, 48274 = Tiangong, 20580 = Hubble. Each id gets a 'next visible pass' sensor.",
+          "tracked_satellites": "25544 = ISS, 48274 = Tiangong, 20580 = Hubble. Each id gets a 'next visible pass' sensor and a 'visible now' binary sensor.",
           "min_elevation": "Passes lower than this above the horizon are ignored."
         }
       }
@@ -34,7 +34,7 @@
           "min_elevation": "Minimum pass elevation"
         },
         "data_description": {
-          "tracked_satellites": "25544 = ISS, 48274 = Tiangong, 20580 = Hubble. Each id gets a 'next visible pass' sensor.",
+          "tracked_satellites": "25544 = ISS, 48274 = Tiangong, 20580 = Hubble. Each id gets a 'next visible pass' sensor and a 'visible now' binary sensor.",
           "min_elevation": "Passes lower than this above the horizon are ignored."
         }
       }
@@ -45,10 +45,20 @@
     }
   },
   "entity": {
+    "binary_sensor": {
+      "tracked_visible": { "name": "{satellite} visible now" }
+    },
     "sensor": {
       "catalog": { "name": "Satellites tracked" },
       "above_horizon": { "name": "Satellites above horizon" },
-      "visible_now": { "name": "Satellites visible now" }
+      "visible_now": { "name": "Satellites visible now" },
+      "next_visible_pass": { "name": "{satellite} next visible pass" }
+    }
+  },
+  "issues": {
+    "satellite_lost": {
+      "title": "{name} is no longer listed at CelesTrak",
+      "description": "CelesTrak has had no orbital data for {name} (NORAD {norad}) for more than a day. The satellite has probably re-entered or been retired, or the NORAD id is wrong. Remove the id from the Orbitarium options to stop tracking it. This message disappears by itself if the satellite is listed again."
     }
   }
 }

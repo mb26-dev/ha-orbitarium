@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.3.0
+
+### Added
+
+- **Visible now binary sensor** for every tracked satellite (ISS and Tiangong by default): on while the satellite is above the minimum pass elevation, sunlit and your sky is dark. Attributes with elevation, azimuth, compass direction, range, sunlit state and sun elevation.
+- **Faster updates during a pass:** while a tracked satellite is up or about to rise, the tracked satellites are recalculated every 10 seconds instead of every 2 minutes. The scan over the whole catalogue stays at 2 minutes.
+- **Repair notice** when CelesTrak no longer lists a tracked satellite for more than a day (re-entered, retired or a wrong NORAD id). It clears itself when the satellite is listed again.
+- **German translation** of the setup, the options, the entity names and the repair notice.
+- Attribute `next_download_attempt` on *Satellites tracked* while downloads are paused.
+
+### Changed
+
+- **Kinder to CelesTrak:** after a failed download (server error, rate limit, unexpected answer) CelesTrak is not asked again for 6 hours instead of every hour. The pause is saved, so restarting Home Assistant does not cause extra requests.
+- A tracked satellite that CelesTrak does not know any more no longer counts as a failed download; the elements of the other tracked satellites are still refreshed.
+- Pass sensor names now come from the translations (same entity ids as before).
+
 ## 1.2.1
 
 ### Fixed

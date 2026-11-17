@@ -1,0 +1,74 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Orbitarium",
+        "description": "Wähle, welche Satellitengruppen von CelesTrak geladen werden. Die Positionen werden lokal für deinen Home-Assistant-Standort berechnet. Allein Starlink hat mehr als elftausend Satelliten.",
+        "data": {
+          "groups": "Satellitengruppen",
+          "tracked_satellites": "Überflugvorhersage für (NORAD-IDs, durch Komma getrennt)",
+          "min_elevation": "Minimale Überflughöhe"
+        },
+        "data_description": {
+          "tracked_satellites": "25544 = ISS, 48274 = Tiangong, 20580 = Hubble. Jede ID bekommt einen Sensor 'nächster sichtbarer Überflug' und einen Binärsensor 'jetzt sichtbar'.",
+          "min_elevation": "Überflüge, die niedriger über dem Horizont bleiben, werden ignoriert."
+        }
+      }
+    },
+    "error": {
+      "no_groups": "Wähle mindestens eine Satellitengruppe aus.",
+      "invalid_norad": "Gib numerische NORAD-Katalognummern ein, durch Kommas getrennt."
+    },
+    "abort": {
+      "already_configured": "Orbitarium ist bereits eingerichtet.",
+      "single_instance_allowed": "Orbitarium ist bereits eingerichtet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Orbitarium Optionen",
+        "data": {
+          "groups": "Satellitengruppen",
+          "tracked_satellites": "Überflugvorhersage für (NORAD-IDs, durch Komma getrennt)",
+          "min_elevation": "Minimale Überflughöhe"
+        },
+        "data_description": {
+          "tracked_satellites": "25544 = ISS, 48274 = Tiangong, 20580 = Hubble. Jede ID bekommt einen Sensor 'nächster sichtbarer Überflug' und einen Binärsensor 'jetzt sichtbar'.",
+          "min_elevation": "Überflüge, die niedriger über dem Horizont bleiben, werden ignoriert."
+        }
+      }
+    },
+    "error": {
+      "no_groups": "Wähle mindestens eine Satellitengruppe aus.",
+      "invalid_norad": "Gib numerische NORAD-Katalognummern ein, durch Kommas getrennt."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "tracked_visible": {
+        "name": "{satellite} jetzt sichtbar"
+      }
+    },
+    "sensor": {
+      "catalog": {
+        "name": "Erfasste Satelliten"
+      },
+      "above_horizon": {
+        "name": "Satelliten über dem Horizont"
+      },
+      "visible_now": {
+        "name": "Jetzt sichtbare Satelliten"
+      },
+      "next_visible_pass": {
+        "name": "{satellite} nächster sichtbarer Überflug"
+      }
+    }
+  },
+  "issues": {
+    "satellite_lost": {
+      "title": "{name} ist bei CelesTrak nicht mehr gelistet",
+      "description": "CelesTrak liefert seit mehr als einem Tag keine Bahndaten mehr für {name} (NORAD {norad}). Vermutlich ist der Satellit verglüht oder abgeschaltet, oder die NORAD-ID ist falsch. Entferne die ID in den Orbitarium-Optionen, um ihn nicht mehr zu verfolgen. Diese Meldung verschwindet von selbst, sobald der Satellit wieder gelistet ist."
+    }
+  }
+}
