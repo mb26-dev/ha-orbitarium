@@ -10,7 +10,7 @@
           "min_elevation": "Minimale \u00dcberflugh\u00f6he"
         },
         "data_description": {
-          "groups": "Raketenstufen und Weltraumschrott f\u00fcgen ausgebrannte Raketenstufen und Tr\u00fcmmer hinzu (zusammen etwa 12.500 Objekte). Sie erscheinen als kleine Punkte; Schrott z\u00e4hlt nie als sichtbar.",
+          "groups": "Neue Starts zeigt alles, was in den letzten 30 Tagen gestartet ist, etwa frische Starlink-Z\u00fcge, und legt einen Bin\u00e4rsensor 'Satellitenzug sichtbar' an. Raketenstufen und Weltraumschrott f\u00fcgen ausgebrannte Raketenstufen und Tr\u00fcmmer hinzu (zusammen etwa 12.500 Objekte). Sie erscheinen als kleine Punkte; Schrott z\u00e4hlt nie als sichtbar.",
           "tracked_satellites": "25544 = ISS, 48274 = Tiangong, 20580 = Hubble. Jede ID bekommt einen Sensor 'n\u00e4chster sichtbarer \u00dcberflug' und einen Bin\u00e4rsensor 'jetzt sichtbar'.",
           "min_elevation": "\u00dcberfl\u00fcge, die niedriger \u00fcber dem Horizont bleiben, werden ignoriert."
         }
@@ -35,7 +35,7 @@
           "min_elevation": "Minimale \u00dcberflugh\u00f6he"
         },
         "data_description": {
-          "groups": "Raketenstufen und Weltraumschrott f\u00fcgen ausgebrannte Raketenstufen und Tr\u00fcmmer hinzu (zusammen etwa 12.500 Objekte). Sie erscheinen als kleine Punkte; Schrott z\u00e4hlt nie als sichtbar.",
+          "groups": "Neue Starts zeigt alles, was in den letzten 30 Tagen gestartet ist, etwa frische Starlink-Z\u00fcge, und legt einen Bin\u00e4rsensor 'Satellitenzug sichtbar' an. Raketenstufen und Weltraumschrott f\u00fcgen ausgebrannte Raketenstufen und Tr\u00fcmmer hinzu (zusammen etwa 12.500 Objekte). Sie erscheinen als kleine Punkte; Schrott z\u00e4hlt nie als sichtbar.",
           "tracked_satellites": "25544 = ISS, 48274 = Tiangong, 20580 = Hubble. Jede ID bekommt einen Sensor 'n\u00e4chster sichtbarer \u00dcberflug' und einen Bin\u00e4rsensor 'jetzt sichtbar'.",
           "min_elevation": "\u00dcberfl\u00fcge, die niedriger \u00fcber dem Horizont bleiben, werden ignoriert."
         }
@@ -50,6 +50,9 @@
     "binary_sensor": {
       "tracked_visible": {
         "name": "{satellite} jetzt sichtbar"
+      },
+      "train_visible": {
+        "name": "Satellitenzug sichtbar"
       }
     },
     "sensor": {
