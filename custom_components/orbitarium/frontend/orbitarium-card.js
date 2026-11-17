@@ -19,9 +19,9 @@ import {
   planetPositions,
   isSunlit,
   bvToColor,
-} from "./orbitarium-core.js?v=1.0.0";
+} from "./orbitarium-core.js?v=1.0.1";
 
-const CARD_VERSION = "1.0.0";
+const CARD_VERSION = "1.0.1";
 const GOLD = "#d4af37";
 const WARP_STEPS = [-600, -120, -30, -5, 0, 1, 5, 30, 120, 600];
 const CARDINALS = [
@@ -223,7 +223,21 @@ class OrbitariumCard extends HTMLElement {
       groups: null,
       ...config,
     };
+    this._fixedHeight = config.height !== undefined && config.height !== null && config.height !== "";
     if (this._view) this._resetView();
+    if (this._els) this._resize();
+  }
+
+  // set by Home Assistant when the card is the only card of a panel view
+  set isPanel(value) {
+    const v = Boolean(value);
+    if (v === this._isPanel) return;
+    this._isPanel = v;
+    if (this._els) this._resize();
+  }
+
+  get isPanel() {
+    return Boolean(this._isPanel);
   }
 
   getCardSize() {
@@ -248,10 +262,13 @@ class OrbitariumCard extends HTMLElement {
   }
 
   connectedCallback() {
+    if (!this._onWinResize) this._onWinResize = () => { if (this._isPanel && this._els) this._resize(); };
+    window.addEventListener("resize", this._onWinResize);
     if (this._built) this._start();
   }
 
   disconnectedCallback() {
+    if (this._onWinResize) window.removeEventListener("resize", this._onWinResize);
     this._stop();
   }
 
@@ -447,7 +464,11 @@ class OrbitariumCard extends HTMLElement {
     const wrap = this._els.wrap;
     const width = wrap.clientWidth || 600;
     let height = Number(this._config.height) || 440;
-    if (width < 520) height = Math.round(clamp(width * 1.08, 320, 560));
+    if (this._isPanel && !this._fixedHeight) {
+      // panel view: fill the visible area below the HA toolbar
+      const top = Math.max(0, wrap.getBoundingClientRect().top + window.scrollY);
+      height = Math.max(360, window.innerHeight - top - 2);
+    } else if (width < 520) height = Math.round(clamp(width * 1.08, 320, 560));
     if (!document.fullscreenElement) wrap.style.height = `${height}px`;
     const h = wrap.clientHeight || height;
     const dpr = clamp(window.devicePixelRatio || 1, 1, 2);
@@ -1037,7 +1058,40 @@ class OrbitariumCard extends HTMLElement {
       ctx.font = "600 11px Roboto, system-ui, sans-serif";
       ctx.fillStyle = "rgba(255,236,190,0.9)";
       ctx.textBaseline = "middle";
-      for (const [x, y, name, rad] of labels) ctx.fillText(name, x + rad + 5, y);
+      // place labels without overlap: try right, left, above, below of the body
+      const boxes = labels.map(([x, y, , rad]) => [x - rad - 1, y - rad - 1, x + rad + 1, y + rad + 1]);
+      const hit = (b) => boxes.some((o) => b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1]);
+      for (const [x, y, name, rad] of labels) {
+        const tw = ctx.measureText(name).width;
+        const gap = rad + 5;
+        const cands = [
+          [x + gap, y, "left"],
+          [x - gap, y, "right"],
+          [x, y - gap - 6, "center"],
+          [x, y + gap + 6, "center"],
+          [x + gap, y - 13, "left"],
+          [x + gap, y + 13, "left"],
+        ];
+        let pick = cands[0];
+        let box = null;
+        for (const c of cands) {
+          const x0 = c[2] === "left" ? c[0] : c[2] === "right" ? c[0] - tw : c[0] - tw / 2;
+          const b = [x0 - 2, c[1] - 7, x0 + tw + 2, c[1] + 7];
+          if (b[0] >= 2 && b[2] <= this._w - 2 && !hit(b)) {
+            pick = c;
+            box = b;
+            break;
+          }
+        }
+        if (!box) {
+          const x0 = pick[0];
+          box = [x0 - 2, pick[1] - 7, x0 + tw + 2, pick[1] + 7];
+        }
+        boxes.push(box);
+        ctx.textAlign = pick[2];
+        ctx.fillText(name, pick[0], pick[1]);
+      }
+      ctx.textAlign = "left";
     }
   }
 
@@ -1626,7 +1680,7 @@ class OrbitariumCardEditor extends HTMLElement {
         ({
           title: "Title",
           view: "Start view",
-          height: "Height (px, desktop)",
+          height: "Height in px (empty: 440, panel view: full screen)",
           fps: "Frames per second",
           star_limit: "Faintest star magnitude",
           show_constellations: "Constellation lines",
@@ -1657,7 +1711,7 @@ class OrbitariumCardEditor extends HTMLElement {
       { name: "visible_only", selector: { boolean: {} } },
     ];
     this._form.data = {
-      title: "Orbitarium", view: "dome", height: 440, fps: 30, star_limit: 6, show_constellations: true,
+      title: "Orbitarium", view: "dome", fps: 30, star_limit: 6, show_constellations: true,
       show_labels: true, show_planets: true, show_ground: true, visible_only: false, ...this._config,
     };
     if (this._hass) this._form.hass = this._hass;
