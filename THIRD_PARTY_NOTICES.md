@@ -43,6 +43,17 @@ Land polygons for the globe view are downloaded once from
 [Natural Earth](https://www.naturalearthdata.com) (1:110m land, public domain) via
 [natural-earth-vector](https://github.com/nvkelso/natural-earth-vector), pinned to release `v5.1.2`.
 
+## Earth imagery (downloaded at runtime, not redistributed)
+
+The globe view uses NASA Earth Observatory imagery, downloaded once by the integration:
+
+- Blue Marble: Next Generation with topography and bathymetry (Reto Stöckli, NASA Earth Observatory),
+  one image per month, 5400 x 2700 pixels
+- Black Marble 2016 city lights (NASA Earth Observatory, Suomi NPP VIIRS data), 3600 x 1800 pixels
+
+NASA imagery is free of licensing fees; credit: "NASA Earth Observatory",
+https://science.nasa.gov/earth/earth-observatory/
+
 ## Artwork
 
 The satellite, Sun, Moon and planet pictures are original drawings rendered by the card at runtime.

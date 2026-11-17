@@ -99,6 +99,7 @@ class CatalogSensor(OrbitariumEntity, SensorEntity):
             "last_attempt": _iso(data.last_attempt or None),
             "last_error": data.last_error,
             "stars_loaded": len(data.sky["stars"]) if data.sky else 0,
+            "earth_imagery": data.earth_status(),
             "source": "CelesTrak",
         }
 

@@ -24,7 +24,7 @@ Everything is calculated locally in Home Assistant and in your browser. No API k
 **Lovelace card** `custom:orbitarium-card` (installed and registered automatically)
 
 - Planetarium view of the whole sky (dome) or towards the horizon, with atmosphere, twilight glow and ground
-- Globe view: Earth from space with land masses, day and night side and all satellites in orbit
+- Globe view: Earth from space with real NASA imagery (Blue Marble by day, city lights by night) and all satellites in orbit
 - Night sky switch: a dark sky even in daylight, so every satellite stands out
 - Stars down to magnitude 6 with real colours, constellation lines and names, bright star names
 - Sun, Moon with its current phase, Mercury to Neptune, each with an info card: portrait, position, distance, rise and set times and key facts
@@ -70,7 +70,7 @@ All settings are done in the UI and can be changed later under **Configure**:
 | Pass predictions for | `25544, 48274` | NORAD ids that get a "next visible pass" sensor |
 | Minimum pass elevation | 10° | Lower passes are ignored |
 
-Orbital data is refreshed every 12 hours and cached, so restarts do not download anything again. The star catalogue is downloaded once on first start and then kept locally.
+Orbital data is refreshed every 12 hours and cached, so restarts do not download anything again. The star catalogue and the NASA Earth images (about 3 MB) are downloaded once and then kept locally; the day image is renewed once a month.
 
 The observer location is your Home Assistant home location.
 
@@ -142,6 +142,7 @@ Satellite positions use SGP4 with the newest CelesTrak elements, which is accura
 - Orbital elements: [CelesTrak](https://celestrak.org)
 - Stars and constellations: [d3-celestial](https://github.com/ofrohn/d3-celestial) by Olaf Frohn (BSD-3-Clause)
 - Land outlines: [Natural Earth](https://www.naturalearthdata.com) (public domain)
+- Earth imagery: NASA Earth Observatory, [Blue Marble Next Generation](https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/) by Reto Stöckli and [Black Marble 2016](https://science.nasa.gov/earth/earth-observatory/earth-at-night/maps)
 - Satellite, Sun, Moon and planet pictures are original drawings rendered in the card
 - SGP4: port of [satellite.js](https://github.com/shashwatak/satellite-js) (MIT), based on the work of David Vallado
 

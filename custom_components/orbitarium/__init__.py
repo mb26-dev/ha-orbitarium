@@ -30,6 +30,7 @@ from .const import (
     DOMAIN,
     TLE_RETRY_MINUTES,
     URL_CATALOG,
+    URL_EARTH,
     URL_FRONTEND,
     URL_SKY,
     VERSION,
@@ -67,6 +68,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     add_extra_js_url(hass, f"{URL_FRONTEND}/{CARD_FILE}?v={VERSION}")
     hass.http.register_view(OrbitariumCatalogView())
     hass.http.register_view(OrbitariumSkyView())
+    hass.http.register_view(OrbitariumEarthView())
     return True
 
 
@@ -88,6 +90,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if data.needs_refresh():
             await data.async_refresh_catalog()
         await data.async_ensure_sky()
+        await data.async_ensure_earth()
 
     if not data.rows:
         # very first start: get the satellite data before the sensors are created
@@ -164,3 +167,21 @@ class OrbitariumSkyView(HomeAssistantView):
         if data is None:
             return web.json_response({"error": "Orbitarium is not configured"}, status=404)
         return _gzip_response(request, data.sky_gzip, "Star catalogue not loaded yet")
+
+
+class OrbitariumEarthView(HomeAssistantView):
+    """Serve the NASA Earth images (day and night) for the globe view."""
+
+    url = URL_EARTH
+    name = "api:orbitarium:earth"
+    requires_auth = True
+
+    async def get(self, request: web.Request, kind: str) -> web.StreamResponse:
+        hass: HomeAssistant = request.app[KEY_HASS]
+        data: OrbitariumData | None = hass.data.get(DOMAIN, {}).get("data")
+        if data is None:
+            return web.json_response({"error": "Orbitarium is not configured"}, status=404)
+        path = data.earth_path(kind)
+        if path is None:
+            return web.json_response({"error": "Earth image not downloaded yet"}, status=503)
+        return web.FileResponse(path, headers={"Cache-Control": "private, max-age=86400"})

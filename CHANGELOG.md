@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0
+
+### Added
+
+- **Real Earth imagery in the globe view:** NASA Blue Marble Next Generation on the day side (the image of the current month, so snow and vegetation follow the seasons) and NASA Black Marble city lights on the night side, with a soft terminator and a thin atmosphere at the limb.
+- Sensor attribute `earth_imagery` on *Satellites tracked* shows whether the images are downloaded.
+
+### Changed
+
+- The integration downloads the two NASA images once (about 3 MB) and serves them locally. The day image is renewed when the month changes. Without the images the globe falls back to the outline style.
+
 ## 1.1.0
 
 ### Added
