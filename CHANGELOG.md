@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0 (in testing)
+
+### Added
+
+- **Icons for rocket bodies and debris:** a spent upper stage with its engine bell and a torn metal fragment, also in the info panel. Rocket bodies in other groups (the *Brightest* list has many) get the rocket icon too.
+
+### Changed
+
+- Rocket bodies and debris have their own icon budget: with up to 700 of them on screen they are drawn as icons, beyond that as dots, without ever taking the icons away from the satellites.
+
 ## 1.4.0
 
 ### Added
