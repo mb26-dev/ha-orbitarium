@@ -89,6 +89,23 @@ def build_satrec(row: list[Any]) -> SatRec | None:
         return None
 
 
+def parse_omm_text(text: str) -> list[list[Any]]:
+    """Parse a CelesTrak OMM JSON response into compact rows.
+
+    Runs in the executor: the Starlink group alone is several megabytes of JSON.
+    Raises ValueError when the text is not JSON and TypeError when it is not a list.
+    """
+    data = json.loads(text)
+    if not isinstance(data, list):
+        raise TypeError("unexpected response")
+    return [r for r in (omm_to_row(o) for o in data) if r is not None]
+
+
+def parse_sky_texts(texts: dict[str, str]) -> dict[str, Any]:
+    """Parse the downloaded star catalogue files and build the compact catalogue (executor)."""
+    return process_sky_files({key: json.loads(text) for key, text in texts.items()})
+
+
 def _ra(lon: float) -> float:
     return round(lon + 360.0 if lon < 0 else lon, 3)
 
@@ -145,7 +162,7 @@ def process_sky_files(raw: dict[str, Any]) -> dict[str, Any]:
             continue
         constellations.append([
             feat.get("id", ""),
-            props.get("en") or props.get("name") or feat.get("id", ""),
+            props.get("name") or props.get("la") or props.get("en") or feat.get("id", ""),
             _ra(coords[0]),
             round(coords[1], 3),
             int(_num(props.get("rank")) or 3),
@@ -199,7 +216,11 @@ class OrbitariumData:
         self.rows: list[list[Any]] = []  # merged rows incl. group index at [10]
         self.satrecs: dict[int, SatRec] = {}
         self.catalog_gzip: bytes | None = None
+        self.catalog_json: bytes | None = None
         self.sky_gzip: bytes | None = None
+        self.sky_json: bytes | None = None
+        self._names: dict[int, str] = {}
+        self._counts: dict[str, int] = {}
         self.catalog_updated: float = 0.0
         self._lock = asyncio.Lock()
         self.earth_dir = Path(hass.config.path(".storage", EARTH_DIR))
@@ -285,15 +306,14 @@ class OrbitariumData:
             _LOGGER.warning("Could not download %s from CelesTrak: %s", label, err)
             return None
         try:
-            data = json.loads(text)
+            rows = await self.hass.async_add_executor_job(parse_omm_text, text)
         except ValueError:
             errors.append(f"{label}: {text.strip()[:80]}")
             _LOGGER.warning("CelesTrak returned no JSON for %s: %s", label, text.strip()[:200])
             return None
-        if not isinstance(data, list):
+        except TypeError:
             errors.append(f"{label}: unexpected response")
             return None
-        rows = [r for r in (omm_to_row(o) for o in data) if r is not None]
         _LOGGER.debug("Loaded %s objects for %s", len(rows), label)
         return rows
 
@@ -302,19 +322,23 @@ class OrbitariumData:
         if self.sky is not None:
             return
         session = async_get_clientsession(self.hass)
-        raw: dict[str, Any] = {}
+        texts: dict[str, str] = {}
         try:
             for key, filename in SKY_FILES.items():
                 async with session.get(D3C_BASE + filename, timeout=HTTP_TIMEOUT, headers={"User-Agent": USER_AGENT}) as resp:
                     resp.raise_for_status()
-                    raw[key] = json.loads(await resp.text())
+                    texts[key] = await resp.text()
             async with session.get(LAND_URL, timeout=HTTP_TIMEOUT, headers={"User-Agent": USER_AGENT}) as resp:
                 resp.raise_for_status()
-                raw["land"] = json.loads(await resp.text())
-        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as err:
+                texts["land"] = await resp.text()
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             _LOGGER.warning("Could not download star catalogue (will retry later): %s", err)
             return
-        sky = await self.hass.async_add_executor_job(process_sky_files, raw)
+        try:
+            sky = await self.hass.async_add_executor_job(parse_sky_texts, texts)
+        except (ValueError, TypeError, KeyError, IndexError) as err:
+            _LOGGER.warning("Star catalogue could not be read (will retry later): %s", err)
+            return
         self.sky = sky
         await self._store_sky.async_save(sky)
         await self.hass.async_add_executor_job(self._rebuild_sky_gzip)
@@ -451,27 +475,29 @@ class OrbitariumData:
             "tracked": self.tracked,
             "sats": rows,
         }
+        counts = {k: 0 for k in group_keys}
+        for row in rows:
+            counts[group_keys[row[10]]] += 1
+        catalog_json = json.dumps(payload, separators=(",", ":")).encode()
         self.rows = rows
         self.satrecs = satrecs
         self.catalog_updated = updated
-        self.catalog_gzip = gzip.compress(json.dumps(payload, separators=(",", ":")).encode(), 6)
+        self._names = {row[0]: row[1] for row in rows}
+        self._counts = counts
+        # plain and gzip copy, so the API views never compress or decompress on the event loop
+        self.catalog_json = catalog_json
+        self.catalog_gzip = gzip.compress(catalog_json, 6)
         self._rebuild_sky_gzip()
 
     def _rebuild_sky_gzip(self) -> None:
         if self.sky is not None:
-            self.sky_gzip = gzip.compress(json.dumps(self.sky, separators=(",", ":")).encode(), 6)
+            sky_json = json.dumps(self.sky, separators=(",", ":")).encode()
+            self.sky_json = sky_json
+            self.sky_gzip = gzip.compress(sky_json, 6)
 
     def group_counts(self) -> dict[str, int]:
-        group_keys = [g for g, _, _ in SATELLITE_GROUPS if g in self.groups]
-        if self.tracked:
-            group_keys.append("tracked")
-        counts = {k: 0 for k in group_keys}
-        for row in self.rows:
-            counts[group_keys[row[10]]] += 1
-        return counts
+        """Satellites per group, prepared by _rebuild (cheap on the event loop)."""
+        return dict(self._counts)
 
     def name_of(self, norad: int) -> str | None:
-        for row in self.rows:
-            if row[0] == norad:
-                return row[1]
-        return None
+        return self._names.get(norad)
