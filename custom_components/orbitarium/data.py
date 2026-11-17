@@ -286,7 +286,11 @@ class OrbitariumData:
             group_keys.append("tracked")
         seen: dict[int, int] = {}
         rows: list[list[Any]] = []
-        for gi, key in enumerate(group_keys):
+        # tracked satellites claim their rows first, so they keep the tracked
+        # group (gold marker, own chip) even when another group also lists them
+        order = sorted(range(len(group_keys)), key=lambda i: group_keys[i] != "tracked")
+        for gi in order:
+            key = group_keys[gi]
             for row in self.group_rows.get(key, []):
                 if row[0] in seen:
                     continue

@@ -80,7 +80,7 @@ type: custom:orbitarium-card
 title: Orbitarium
 view: dome              # dome (whole sky) or horizon
 azimuth: 180            # initial viewing direction in degrees
-height: 440             # height in px on wide screens, phones use a square-ish layout
+height: 440             # height in px on wide screens; leave it out in a panel view to fill the screen
 fps: 30                 # lower it on weak tablets
 star_limit: 6           # faintest star magnitude
 show_constellations: true
