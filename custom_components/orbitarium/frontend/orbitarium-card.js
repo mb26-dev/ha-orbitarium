@@ -19,16 +19,25 @@ import {
   planetPositions,
   isSunlit,
   bvToColor,
-} from "./orbitarium-core.js?v=1.0.1";
+} from "./orbitarium-core.js?v=1.1.0";
+import {
+  KIND_FLAT,
+  isStationKind,
+  satKind,
+  satSprite,
+  satPicture,
+  BODY_FACTS,
+  bodyPicture,
+  moonPhaseName,
+} from "./orbitarium-art.js?v=1.1.0";
 
-const CARD_VERSION = "1.0.1";
+const CARD_VERSION = "1.1.0";
 const GOLD = "#d4af37";
 const WARP_STEPS = [-600, -120, -30, -5, 0, 1, 5, 30, 120, 600];
 const CARDINALS = [
   ["N", 0], ["NE", 45], ["E", 90], ["SE", 135], ["S", 180], ["SW", 225], ["W", 270], ["NW", 315],
 ];
 const CATALOG_REFRESH_MS = 6 * 3600 * 1000;
-
 // ---------------------------------------------------------------------------
 // Shared data (one download for all card instances)
 // ---------------------------------------------------------------------------
@@ -93,6 +102,24 @@ function prepareSky(raw) {
   });
   const names = new Map();
   for (const [idx, name] of raw.names) names.set(idx, name);
+  // land outlines as ECEF unit vectors, per polygon a list of rings
+  const land = [];
+  for (const poly of raw.land || []) {
+    const rings = [];
+    for (const flat of poly) {
+      const n2 = flat.length / 2;
+      const v = new Float32Array(n2 * 3);
+      for (let k = 0; k < n2; k++) {
+        const lo = flat[k * 2] * DEG;
+        const la = flat[k * 2 + 1] * DEG;
+        v[k * 3] = Math.cos(la) * Math.cos(lo);
+        v[k * 3 + 1] = Math.cos(la) * Math.sin(lo);
+        v[k * 3 + 2] = Math.sin(la);
+      }
+      rings.push(v);
+    }
+    land.push(rings);
+  }
   // palette: 8 colour buckets x 6 alpha levels
   const palette = [];
   for (let b = 0; b < 8; b++) {
@@ -102,7 +129,7 @@ function prepareSky(raw) {
     for (let a = 0; a < 6; a++) row.push(`rgba(${rgb},${(0.25 + a * 0.15).toFixed(2)})`);
     palette.push(row);
   }
-  return { n, vec, mag, bucket, order, lines, cons, names, palette };
+  return { n, vec, mag, bucket, order, lines, cons, names, palette, land };
 }
 
 function prepareCatalog(raw) {
@@ -220,6 +247,8 @@ class OrbitariumCard extends HTMLElement {
       show_planets: true,
       show_ground: true,
       visible_only: false,
+      satellite_icons: true,
+      night_sky: false,
       groups: null,
       ...config,
     };
@@ -282,6 +311,7 @@ class OrbitariumCard extends HTMLElement {
     this._showLines = this._config.show_constellations !== false;
     this._showLabels = this._config.show_labels !== false;
     this._visibleOnly = this._config.visible_only === true;
+    this._forceNight = this._config.night_sky === true;
     this._selected = null;
     this._status = "Loading sky data ...";
     this._build();
@@ -292,10 +322,18 @@ class OrbitariumCard extends HTMLElement {
     const c = this._config || {};
     if (c.view === "horizon") {
       this._view = { az: Number(c.azimuth ?? 180), alt: 12, fov: 110, mode: "horizon" };
+    } else if (c.view === "globe") {
+      this._view = this._globeView();
     } else {
       this._view = { az: Number(c.azimuth ?? 180), alt: 90, fov: 182, mode: "dome" };
     }
     this._bgDirty = true;
+  }
+
+  _globeView() {
+    const lat = Number(this._config?.latitude ?? this._hass?.config?.latitude ?? 0);
+    const lon = Number(this._config?.longitude ?? this._hass?.config?.longitude ?? 0);
+    return { az: 0, alt: 90, fov: 120, mode: "globe", glat: clamp(lat, -80, 80), glon: lon, gz: 1 };
   }
 
   _build() {
@@ -349,6 +387,16 @@ class OrbitariumCard extends HTMLElement {
         .info .name { color: ${GOLD}; font-weight: 600; font-size: 13px; margin-bottom: 2px; padding-right: 20px; overflow-wrap: anywhere; }
         .info .grid { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; }
         .info .grid span:nth-child(odd) { color: #9c947c; }
+        .info .pic { display: block; width: 100%; height: 72px; object-fit: contain; margin: -2px 0 4px; }
+        .info.body { width: min(360px, calc(100% - 20px)); max-height: calc(100% - 140px); overflow-y: auto; }
+        .info .bhead { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; padding-right: 18px; }
+        .info .bpic { width: 84px; height: 84px; flex: 0 0 84px; object-fit: contain; filter: drop-shadow(0 0 10px rgba(0,0,0,0.6)); }
+        .info .bpic.wide { width: 112px; flex-basis: 112px; }
+        .info .bhead .name { font-size: 16px; }
+        .info .sub { color: #9c947c; font-size: 12px; }
+        .info .sep { height: 1px; background: rgba(212,175,55,0.3); margin: 8px 0; }
+        .info .facts { font-size: 11.5px; }
+        .info .note { margin-top: 8px; font-size: 11.5px; color: #d8cfb2; font-style: italic; }
         .info .close { position: absolute; right: 6px; top: 4px; border: none; background: none; color: #9c947c; font-size: 16px; padding: 2px 6px; }
         .msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 20px;
                color: #ece4c8; font-size: 13px; pointer-events: none; font-family: var(--ha-font-family-body, Roboto, system-ui, sans-serif); }
@@ -358,6 +406,10 @@ class OrbitariumCard extends HTMLElement {
           button { padding: 4px 7px; }
           .info { font-size: 11px; line-height: 1.45; padding: 8px 10px; bottom: 76px; }
           .info .grid { grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); column-gap: 8px; }
+          .info .pic { height: 52px; }
+          .info.body .bpic { width: 64px; height: 64px; flex-basis: 64px; }
+          .info.body .bpic.wide { width: 90px; flex-basis: 90px; }
+          .info.body .grid { grid-template-columns: auto minmax(0, 1fr); }
         }
         @media (max-width: 480px) {
           .top { padding: 8px 10px; }
@@ -386,6 +438,7 @@ class OrbitariumCard extends HTMLElement {
               <button class="icon" data-act="faster" title="Faster"><ha-icon icon="mdi:fast-forward"></ha-icon></button>
               <button data-act="now" title="Back to live time"><ha-icon icon="mdi:clock-outline"></ha-icon><span class="lbl">Now</span></button>
               <span style="flex:1 1 auto"></span>
+              <button class="icon" data-act="night" title="Night sky (dark background)"><ha-icon icon="mdi:weather-night"></ha-icon></button>
               <button class="icon" data-act="zoomout" title="Zoom out"><ha-icon icon="mdi:magnify-minus-outline"></ha-icon></button>
               <button class="icon" data-act="zoomin" title="Zoom in"><ha-icon icon="mdi:magnify-plus-outline"></ha-icon></button>
               <button data-act="view" title="Switch view"><ha-icon icon="mdi:telescope"></ha-icon><span class="vlabel lbl"></span></button>
@@ -407,6 +460,7 @@ class OrbitariumCard extends HTMLElement {
       info: root.querySelector(".info"),
       msg: root.querySelector(".msg"),
       full: root.querySelector('[data-act="full"]'),
+      night: root.querySelector('[data-act="night"]'),
     };
     this._els.title.textContent = this._config.title || "";
     if (!document.fullscreenEnabled) this._els.full.style.display = "none";
@@ -536,6 +590,12 @@ class OrbitariumCard extends HTMLElement {
     this._valid = new Uint8Array(n);
     this._sx = new Float32Array(n).fill(-1e6);
     this._sy = new Float32Array(n).fill(-1e6);
+    this._sa = new Float32Array(n);
+    this._kind = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      const g = cat.groups[cat.group[i]];
+      this._kind[i] = satKind(g ? g.key : "", cat.names[i]);
+    }
     this._cursor = 0;
     this._groupCounts = new Array(cat.groups.length).fill(0);
     for (let i = 0; i < n; i++) this._groupCounts[cat.group[i]]++;
@@ -673,26 +733,47 @@ class OrbitariumCard extends HTMLElement {
     const sun = sunPosition(jd);
     const sunEnu = this._toEnu(obs, sun.dir);
     const sunAlt = Math.asin(clamp(sunEnu[2], -1, 1)) / DEG;
+    const globe = this._view.mode === "globe";
+    // night sky switch: draw a dark sky, the real sun altitude still drives all counts
+    const skyAlt = this._forceNight ? Math.min(sunAlt, -30) : sunAlt;
+    const G = globe ? this._globeFrame(theta) : null;
+    this._G = G;
+    const now = performance.now();
 
     // ---------------- background (sky + ground) ----------------
-    const viewKey = `${this._w}x${this._h}|${this._view.az.toFixed(2)}|${this._view.alt.toFixed(2)}|${this._view.fov.toFixed(2)}`;
-    const now = performance.now();
-    if (this._bgDirty || viewKey !== this._bgKey || now - (this._bgTime || 0) > (Math.abs(this._sim.warp) > 1 ? 250 : 5000)) {
-      this._renderBackground(cam, sunEnu, sunAlt);
-      this._bgKey = viewKey;
-      this._bgTime = now;
-      this._bgDirty = false;
+    if (globe) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const bg = ctx.createRadialGradient(this._w / 2, this._h / 2, 0, this._w / 2, this._h / 2, Math.max(this._w, this._h) * 0.75);
+      bg.addColorStop(0, "#0a1122");
+      bg.addColorStop(1, "#010205");
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, this._w, this._h);
+    } else {
+      const viewKey = `${this._w}x${this._h}|${this._view.az.toFixed(2)}|${this._view.alt.toFixed(2)}|${this._view.fov.toFixed(2)}|${this._forceNight ? 1 : 0}`;
+      if (this._bgDirty || viewKey !== this._bgKey || now - (this._bgTime || 0) > (Math.abs(this._sim.warp) > 1 ? 250 : 5000)) {
+        this._renderBackground(cam, sunEnu, skyAlt);
+        this._bgKey = viewKey;
+        this._bgTime = now;
+        this._bgDirty = false;
+      }
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(this._bg, 0, 0, this._els.canvas.width, this._els.canvas.height);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(this._bg, 0, 0, this._els.canvas.width, this._els.canvas.height);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const dark = sunAlt < -6;
-    const limMag = this._limitingMagnitude(sunAlt);
+    const limMag = this._limitingMagnitude(globe ? -30 : skyAlt);
+
+    // ---------------- globe ----------------
+    if (globe) {
+      this._starScreen = [];
+      if (this._sky) this._drawGlobeStars(ctx, G, jd, theta, P);
+      this._drawGlobe(ctx, G, sun.dir, theta, lat, lon);
+    }
 
     // ---------------- stars / constellations ----------------
-    if (this._sky) {
+    if (this._sky && !globe) {
       const prec = this._precFor(jd);
       // combined matrix: ENU rows * precession  (J2000 -> ENU)
       const M = [
@@ -700,16 +781,16 @@ class OrbitariumCard extends HTMLElement {
         this._rowTimes(obs.north, prec),
         this._rowTimes(obs.up, prec),
       ];
-      if (this._showLines && this._config.show_constellations !== false) this._drawConstellations(ctx, cam, M, sunAlt);
+      if (this._showLines && this._config.show_constellations !== false) this._drawConstellations(ctx, cam, M, skyAlt);
       this._drawStars(ctx, cam, M, limMag, P);
     }
 
     // ---------------- solar system ----------------
     this._bodies = [];
-    if (this._config.show_planets !== false) this._drawSolarSystem(ctx, cam, obs, jd, sun, sunEnu, sunAlt, limMag, P);
+    if (!globe && this._config.show_planets !== false) this._drawSolarSystem(ctx, cam, obs, jd, sun, sunEnu, sunAlt, limMag, P);
 
     // ---------------- horizon + cardinals ----------------
-    this._drawHorizon(ctx, cam, P);
+    if (!globe) this._drawHorizon(ctx, cam, P);
 
     // ---------------- satellites ----------------
     let above = 0;
@@ -1033,7 +1114,7 @@ class OrbitariumCard extends HTMLElement {
       if (sOk) angle = Math.atan2(S[1] - P[1], S[0] - P[0]);
       this._drawMoon(ctx, P[0], P[1], rad, illum, angle);
       labels.push([P[0], P[1], "Moon", rad]);
-      this._bodies.push({ type: "moon", name: "Moon", x: P[0], y: P[1], enu: mEnu, illum, dist: moon.dist });
+      this._bodies.push({ type: "moon", name: "Moon", x: P[0], y: P[1], enu: mEnu, illum, angle, dist: moon.dist });
     }
 
     // Sun
@@ -1051,7 +1132,7 @@ class OrbitariumCard extends HTMLElement {
       ctx.arc(P[0], P[1], rad, 0, TWO_PI);
       ctx.fill();
       labels.push([P[0], P[1], "Sun", rad]);
-      this._bodies.push({ type: "sun", name: "Sun", x: P[0], y: P[1], enu: sunEnu });
+      this._bodies.push({ type: "sun", name: "Sun", x: P[0], y: P[1], enu: sunEnu, dist: sun.dist });
     }
 
     if (this._showLabels) {
@@ -1115,6 +1196,244 @@ class OrbitariumCard extends HTMLElement {
     ctx.closePath();
     ctx.fill();
     ctx.restore();
+  }
+
+  // --------------------------------------------------------------- globe
+
+  /** camera for the globe view: Earth fixed (ECEF), seen from above glat/glon */
+  _globeFrame(theta) {
+    const v = this._view;
+    const la = v.glat * DEG;
+    const lo = v.glon * DEG;
+    const view = [Math.cos(la) * Math.cos(lo), Math.cos(la) * Math.sin(lo), Math.sin(la)];
+    const east = [-Math.sin(lo), Math.cos(lo), 0];
+    const north = [-Math.sin(la) * Math.cos(lo), -Math.sin(la) * Math.sin(lo), Math.cos(la)];
+    const R = Math.min(this._w, this._h) * 0.3 * v.gz;
+    return { view, east, north, R, k: R / 6371, cx: this._w / 2, cy: this._h / 2, c: Math.cos(theta), s: Math.sin(theta) };
+  }
+
+  /** ECI position (km) to screen; false when hidden behind the Earth */
+  _globeProject(G, x, y, z, out, noHide) {
+    const xe = G.c * x + G.s * y;
+    const ye = -G.s * x + G.c * y;
+    const X = xe * G.east[0] + ye * G.east[1] + z * G.east[2];
+    const Y = xe * G.north[0] + ye * G.north[1] + z * G.north[2];
+    const D = xe * G.view[0] + ye * G.view[1] + z * G.view[2];
+    out[0] = G.cx + X * G.k;
+    out[1] = G.cy - Y * G.k;
+    if (noHide) return true;
+    return !(D < 0 && X * X + Y * Y < 6371 * 6371);
+  }
+
+  _drawGlobeStars(ctx, G, jd, theta, P) {
+    const sky = this._sky;
+    const prec = this._precFor(jd);
+    const c = Math.cos(theta);
+    const s = Math.sin(theta);
+    // J2000 -> ECEF rows
+    const rowE = (row) => [
+      row[0] * c + row[1] * s,
+      -row[0] * s + row[1] * c,
+      row[2],
+    ];
+    const pe = [rowE([prec[0][0], prec[1][0], prec[2][0]]), rowE([prec[0][1], prec[1][1], prec[2][1]]), rowE([prec[0][2], prec[1][2], prec[2][2]])];
+    // pe[j] = ECEF image of J2000 axis j
+    const S = Math.max(this._w, this._h) * 0.55;
+    const R2 = G.R * G.R * 1.05;
+    for (let k = 0; k < sky.order.length; k++) {
+      const i = sky.order[k];
+      const m = sky.mag[i];
+      if (m > 5.2) continue;
+      const vx = sky.vec[i * 3];
+      const vy = sky.vec[i * 3 + 1];
+      const vz = sky.vec[i * 3 + 2];
+      const d0 = pe[0][0] * vx + pe[1][0] * vy + pe[2][0] * vz;
+      const d1 = pe[0][1] * vx + pe[1][1] * vy + pe[2][1] * vz;
+      const d2 = pe[0][2] * vx + pe[1][2] * vy + pe[2][2] * vz;
+      const f = -(d0 * G.view[0] + d1 * G.view[1] + d2 * G.view[2]);
+      if (f < 0.2) continue;
+      const X = ((d0 * G.east[0] + d1 * G.east[1] + d2 * G.east[2]) / f) * S;
+      const Y = ((d0 * G.north[0] + d1 * G.north[1] + d2 * G.north[2]) / f) * S;
+      if (X * X + Y * Y < R2) continue;
+      const x = G.cx + X;
+      const y = G.cy - Y;
+      if (x < 0 || y < 0 || x > this._w || y > this._h) continue;
+      const rel = 5.2 - m;
+      const rad = clamp(0.35 + rel * 0.3, 0.35, 2.4);
+      ctx.fillStyle = sky.palette[sky.bucket[i]][clamp(Math.floor(rel * 1.2), 0, 5)];
+      ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+    }
+  }
+
+  _drawGlobe(ctx, G, sunDir, theta, lat, lon) {
+    const { cx, cy, R } = G;
+    // atmosphere
+    const ag = ctx.createRadialGradient(cx, cy, R * 0.97, cx, cy, R * 1.13);
+    ag.addColorStop(0, "rgba(120,180,255,0.45)");
+    ag.addColorStop(0.35, "rgba(80,140,255,0.16)");
+    ag.addColorStop(1, "rgba(60,120,255,0)");
+    ctx.fillStyle = ag;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R * 1.13, 0, TWO_PI);
+    ctx.fill();
+    // ocean
+    const og = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.4, R * 0.05, cx, cy, R);
+    og.addColorStop(0, "#245a9c");
+    og.addColorStop(0.6, "#0f3166");
+    og.addColorStop(1, "#06152e");
+    ctx.fillStyle = og;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, TWO_PI);
+    ctx.fill();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, TWO_PI);
+    ctx.clip();
+
+    // graticule every 30 degrees
+    ctx.strokeStyle = "rgba(160,200,255,0.10)";
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    const plot = (la, lo, first) => {
+      const v0 = Math.cos(la) * Math.cos(lo);
+      const v1 = Math.cos(la) * Math.sin(lo);
+      const v2 = Math.sin(la);
+      const D = v0 * G.view[0] + v1 * G.view[1] + v2 * G.view[2];
+      const X = v0 * G.east[0] + v1 * G.east[1] + v2 * G.east[2];
+      const Y = v0 * G.north[0] + v1 * G.north[1] + v2 * G.north[2];
+      if (D < 0) return false;
+      if (first) ctx.moveTo(cx + X * R, cy - Y * R);
+      else ctx.lineTo(cx + X * R, cy - Y * R);
+      return true;
+    };
+    for (let la = -60; la <= 60; la += 30) {
+      let pen = false;
+      for (let lo = -180; lo <= 180; lo += 4) pen = plot(la * DEG, lo * DEG, !pen) || false;
+    }
+    for (let lo = -180; lo < 180; lo += 30) {
+      let pen = false;
+      for (let la = -88; la <= 88; la += 4) pen = plot(la * DEG, lo * DEG, !pen) || false;
+    }
+    ctx.stroke();
+
+    // land masses, faint
+    const land = this._sky && this._sky.land;
+    if (land && land.length) {
+      ctx.fillStyle = "rgba(150,195,150,0.30)";
+      ctx.strokeStyle = "rgba(200,235,200,0.38)";
+      ctx.lineWidth = 0.8;
+      ctx.lineJoin = "round";
+      const vw = G.view;
+      const ea = G.east;
+      const no = G.north;
+      for (const rings of land) {
+        let front = false;
+        ctx.beginPath();
+        for (const v of rings) {
+          const n = v.length / 3;
+          for (let k = 0; k < n; k++) {
+            const a = v[k * 3];
+            const b = v[k * 3 + 1];
+            const c = v[k * 3 + 2];
+            const D = a * vw[0] + b * vw[1] + c * vw[2];
+            let X = a * ea[0] + b * ea[1] + c * ea[2];
+            let Y = a * no[0] + b * no[1] + c * no[2];
+            if (D < 0) {
+              // points on the far side are pushed onto the limb
+              const h = Math.hypot(X, Y) || 1;
+              X /= h;
+              Y /= h;
+            } else {
+              front = true;
+            }
+            if (k === 0) ctx.moveTo(cx + X * R, cy - Y * R);
+            else ctx.lineTo(cx + X * R, cy - Y * R);
+          }
+          ctx.closePath();
+        }
+        if (!front) continue;
+        ctx.fill("evenodd");
+        ctx.stroke();
+      }
+    }
+
+    // night side
+    const sunE = [sunDir[0] * G.c + sunDir[1] * G.s, -sunDir[0] * G.s + sunDir[1] * G.c, sunDir[2]];
+    const shade = this._globeShade(G, sunE);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(shade, cx - R, cy - R, 2 * R, 2 * R);
+    ctx.restore();
+
+    // limb highlight
+    ctx.strokeStyle = "rgba(150,200,255,0.35)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, TWO_PI);
+    ctx.stroke();
+
+    // home marker
+    const la = lat * DEG;
+    const lo = lon * DEG;
+    const h = [Math.cos(la) * Math.cos(lo), Math.cos(la) * Math.sin(lo), Math.sin(la)];
+    const D = h[0] * G.view[0] + h[1] * G.view[1] + h[2] * G.view[2];
+    if (D > 0) {
+      const x = cx + (h[0] * G.east[0] + h[1] * G.east[1] + h[2] * G.east[2]) * R;
+      const y = cy - (h[0] * G.north[0] + h[1] * G.north[1] + h[2] * G.north[2]) * R;
+      ctx.strokeStyle = GOLD;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, TWO_PI);
+      ctx.stroke();
+      ctx.fillStyle = GOLD;
+      ctx.beginPath();
+      ctx.arc(x, y, 2.4, 0, TWO_PI);
+      ctx.fill();
+      if (this._showLabels) {
+        ctx.font = "600 11px Roboto, system-ui, sans-serif";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "rgba(255,233,168,0.95)";
+        ctx.fillText("Home", x + 10, y);
+      }
+    }
+  }
+
+  /** low resolution day/night overlay, cached while the view and sun stay put */
+  _globeShade(G, sunE) {
+    const size = clamp(Math.round(G.R / 2), 32, 260);
+    const key = `${size}|${G.view.map((x) => x.toFixed(3)).join(",")}|${sunE.map((x) => x.toFixed(3)).join(",")}`;
+    if (this._shade && this._shadeKey === key) return this._shade;
+    const c = this._shade || document.createElement("canvas");
+    c.width = size;
+    c.height = size;
+    const sctx = c.getContext("2d");
+    const img = sctx.createImageData(size, size);
+    const d = img.data;
+    let o = 0;
+    for (let j = 0; j < size; j++) {
+      const y = 1 - ((j + 0.5) / size) * 2;
+      for (let i = 0; i < size; i++) {
+        const x = ((i + 0.5) / size) * 2 - 1;
+        const q = x * x + y * y;
+        let a = 0;
+        if (q < 1) {
+          const z = Math.sqrt(1 - q);
+          const n0 = x * G.east[0] + y * G.north[0] + z * G.view[0];
+          const n1 = x * G.east[1] + y * G.north[1] + z * G.view[1];
+          const n2 = x * G.east[2] + y * G.north[2] + z * G.view[2];
+          const dot = n0 * sunE[0] + n1 * sunE[1] + n2 * sunE[2];
+          a = 0.66 * (1 - smooth(-0.1, 0.08, dot));
+        }
+        d[o++] = 2;
+        d[o++] = 4;
+        d[o++] = 14;
+        d[o++] = Math.round(a * 255);
+      }
+    }
+    sctx.putImageData(img, 0, 0);
+    this._shade = c;
+    this._shadeKey = key;
+    return c;
   }
 
   // ------------------------------------------------------------- horizon
@@ -1187,6 +1506,10 @@ class OrbitariumCard extends HTMLElement {
     let above = 0;
     let visible = 0;
     const r = [0, 0, 0];
+    const icons = this._config.satellite_icons !== false;
+    const sa = this._sa;
+    const G = this._G;
+    const Q = this._q || (this._q = new Float64Array(2));
     for (let i = 0; i < n; i++) {
       sx[i] = -1e6;
       if (!valid[i]) continue;
@@ -1204,7 +1527,7 @@ class OrbitariumCard extends HTMLElement {
       const dy = r[1] - op[1];
       const dz = r[2] - op[2];
       const up = dx * U[0] + dy * U[1] + dz * U[2];
-      if (up <= 0 && groundOn) continue;
+      if (up <= 0 && groundOn && !G) continue;
       const g = cat.group[i];
       const lit = isSunlit(r, sunDir);
       // naked-eye visibility: sunlit, dark sky and not too far away (GEO/GNSS are far too faint)
@@ -1214,17 +1537,42 @@ class OrbitariumCard extends HTMLElement {
         if (eyeVisible) visible++;
       }
       if (hidden.has(g)) continue;
-      const state = lit ? (eyeVisible ? 0 : 1) : 2;
+      // in the globe view only satellites above the home horizon count as visible
+      const state = lit ? (eyeVisible && (!G || up > 0) ? 0 : 1) : 2;
       if (visibleOnly && state !== 0 && !cat.tracked.has(cat.norad[i])) continue;
-      const e = dx * E[0] + dy * E[1] + dz * E[2];
-      const nn = dx * N[0] + dy * N[1] + dz * N[2];
-      if (!this._project(e, nn, up, cam, P)) continue;
+      if (G) {
+        if (!this._globeProject(G, r[0], r[1], r[2], P)) continue;
+      } else {
+        const e = dx * E[0] + dy * E[1] + dz * E[2];
+        const nn = dx * N[0] + dy * N[1] + dz * N[2];
+        if (!this._project(e, nn, up, cam, P)) continue;
+      }
       if (P[0] < -4 || P[1] < -4 || P[0] > this._w + 4 || P[1] > this._h + 4) continue;
       sx[i] = P[0];
       sy[i] = P[1];
+      if (icons && G) {
+        this._globeProject(G, r[0] + vel[o] * 20, r[1] + vel[o + 1] * 20, r[2] + vel[o + 2] * 20, Q, true);
+        sa[i] = Math.atan2(Q[1] - P[1], Q[0] - P[0]);
+      } else if (icons) {
+        // screen heading: project the position 20 s ahead
+        const ex = dx + vel[o] * 20;
+        const ey = dy + vel[o + 1] * 20;
+        const ez = dz + vel[o + 2] * 20;
+        const e2 = ex * E[0] + ey * E[1] + ez * E[2];
+        const n2 = ex * N[0] + ey * N[1] + ez * N[2];
+        const u2 = ex * U[0] + ey * U[1] + ez * U[2];
+        if (this._project(e2, n2, u2, cam, Q)) sa[i] = Math.atan2(Q[1] - P[1], Q[0] - P[0]);
+      }
       buckets[g * 3 + state].push(i);
       if (cat.tracked.has(cat.norad[i])) labels.push(i);
     }
+
+    // icons need a few hundred drawImage calls; fall back to dots when the
+    // whole catalogue is on screen (ground hidden) to keep the frame budget
+    let onScreen = 0;
+    for (let b = 0; b < groups * 3; b++) onScreen += buckets[b].length;
+    const drawIcons = icons && onScreen <= 1800;
+    if (drawIcons) this._drawSatIcons(ctx, buckets, groups);
 
     // draw: shadow first, then sunlit, then visible
     for (const state of [2, 1, 0]) {
@@ -1233,13 +1581,15 @@ class OrbitariumCard extends HTMLElement {
         if (!list.length) continue;
         const style = this._groupStyles[g];
         ctx.fillStyle = state === 0 ? style.vis : state === 1 ? style.lit : style.dim;
-        const s = state === 0 ? 2.8 : state === 1 ? 2.2 : 1.6;
-        const h = s / 2;
-        for (let k = 0; k < list.length; k++) {
-          const i = list[k];
-          ctx.fillRect(sx[i] - h, sy[i] - h, s, s);
+        if (!drawIcons) {
+          const s = (state === 0 ? 2.8 : state === 1 ? 2.2 : 1.6) * (G ? 0.7 : 1);
+          const h = s / 2;
+          for (let k = 0; k < list.length; k++) {
+            const i = list[k];
+            ctx.fillRect(sx[i] - h, sy[i] - h, s, s);
+          }
         }
-        if (state === 0) {
+        if (state === 0 && !drawIcons) {
           // soft glow for naked-eye visible satellites
           ctx.save();
           ctx.globalAlpha = 0.18;
@@ -1265,18 +1615,29 @@ class OrbitariumCard extends HTMLElement {
     for (const i of labels) {
       const x = sx[i];
       const y = sy[i];
-      ctx.strokeStyle = GOLD;
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.arc(x, y, 6, 0, TWO_PI);
-      ctx.stroke();
-      ctx.fillStyle = "#ffe9a8";
-      ctx.beginPath();
-      ctx.arc(x, y, 2.6, 0, TWO_PI);
-      ctx.fill();
+      let lx = 10;
+      if (drawIcons) {
+        const L = this._iconLength(this._kind[i], true);
+        ctx.strokeStyle = "rgba(212,175,55,0.55)";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(x, y, L * 0.62 + 3, 0, TWO_PI);
+        ctx.stroke();
+        lx = L * 0.62 + 8;
+      } else {
+        ctx.strokeStyle = GOLD;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(x, y, 6, 0, TWO_PI);
+        ctx.stroke();
+        ctx.fillStyle = "#ffe9a8";
+        ctx.beginPath();
+        ctx.arc(x, y, 2.6, 0, TWO_PI);
+        ctx.fill();
+      }
       if (this._showLabels) {
         ctx.fillStyle = "rgba(255,233,168,0.95)";
-        ctx.fillText(this._shortName(cat.names[i]), x + 10, y);
+        ctx.fillText(this._shortName(cat.names[i]), x + lx, y);
       }
     }
 
@@ -1289,11 +1650,58 @@ class OrbitariumCard extends HTMLElement {
         ctx.beginPath();
         ctx.arc(sx[i], sy[i], 9, 0, TWO_PI);
         ctx.stroke();
-        ctx.fillStyle = "#ffffff";
-        ctx.fillText(this._shortName(cat.names[i]), sx[i] + 13, sy[i] - 10);
+        // tracked satellites already carry their name
+        if (!cat.tracked.has(cat.norad[i])) {
+          ctx.fillStyle = "#ffffff";
+          ctx.fillText(this._shortName(cat.names[i]), sx[i] + 13, sy[i] - 10);
+        }
       }
     }
     return [above, visible];
+  }
+
+  /** icon length in px for the current zoom */
+  _iconLength(kind, tracked) {
+    const zoom = this._view.mode === "globe" ? 0.85 * Math.pow(this._view.gz, 0.7) : Math.pow(120 / this._view.fov, 0.85);
+    const small = Math.min(this._w, this._h) < 520 ? 0.85 : 1;
+    const station = isStationKind(kind);
+    let base = station ? 26 : kind === KIND_FLAT ? 11 : 12;
+    if (tracked) base *= 1.15;
+    const max = station ? 110 : 64;
+    return Math.round(clamp(base * zoom * small, station ? 18 : 7, max));
+  }
+
+  _drawSatIcons(ctx, buckets, groups) {
+    const cat = this._cat;
+    const sx = this._sx;
+    const sy = this._sy;
+    const sa = this._sa;
+    const kinds = this._kind;
+    const dpr = this._dpr;
+    const lens = [this._iconLength(0, false), this._iconLength(1, false), this._iconLength(2, true), this._iconLength(3, true)];
+    const visLens = lens.map((l) => Math.round(l * 1.2));
+    for (const state of [2, 1, 0]) {
+      ctx.globalAlpha = state === 2 ? 0.38 : state === 1 ? 0.88 : 1;
+      for (let g = 0; g < groups; g++) {
+        const list = buckets[g * 3 + state];
+        if (!list.length) continue;
+        const color = cat.groups[g].color;
+        for (let k = 0; k < list.length; k++) {
+          const i = list[k];
+          const kind = kinds[i];
+          const tracked = cat.tracked.has(cat.norad[i]);
+          const L = tracked ? this._iconLength(kind, true) : state === 0 ? visLens[kind] : lens[kind];
+          const sp = satSprite(kind, color, L, dpr, state === 0 ? 2 : state === 1 ? 1 : 0);
+          const a = sa[i];
+          const c = Math.cos(a);
+          const s = Math.sin(a);
+          ctx.setTransform(c * dpr, s * dpr, -s * dpr, c * dpr, sx[i] * dpr, sy[i] * dpr);
+          ctx.drawImage(sp.canvas, -sp.w / 2, -sp.h / 2, sp.w, sp.h);
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   _shortName(name) {
@@ -1307,16 +1715,20 @@ class OrbitariumCard extends HTMLElement {
     const rec = this._cat.recs[i];
     if (!rec) return;
     const tmp = new Float64Array(6);
-    const span = 12; // minutes before/after
+    const span = this._G ? 50 : 12; // minutes before/after
     const lat = Number(this._config.latitude ?? this._hass.config.latitude);
     const lon = Number(this._config.longitude ?? this._hass.config.longitude);
     const altKm = Number(this._hass.config.elevation || 0) / 1000;
     const past = [];
     const future = [];
-    for (let m = -span; m <= span + 1e-9; m += 0.25) {
+    for (let m = -span; m <= span + 1e-9; m += this._G ? 1 : 0.25) {
       const jdm = jd + m / 1440;
       let pt = null;
-      if (sgp4(rec, (jdm - rec.epochJd) * 1440, tmp, 0)) {
+      if (this._G && sgp4(rec, (jdm - rec.epochJd) * 1440, tmp, 0)) {
+        const th = gmst(jdm);
+        const G = { ...this._G, c: Math.cos(th), s: Math.sin(th) };
+        if (this._globeProject(G, tmp[0], tmp[1], tmp[2], P)) pt = [P[0], P[1]];
+      } else if (!this._G && sgp4(rec, (jdm - rec.epochJd) * 1440, tmp, 0)) {
         // the observer rotates with the earth
         const o2 = observerFrame(lat, lon, altKm, gmst(jdm));
         const dx = tmp[0] - o2.pos[0];
@@ -1403,7 +1815,12 @@ class OrbitariumCard extends HTMLElement {
     if (!this._els) return;
     const w = this._sim.warp;
     this._els.warp.textContent = w === 0 ? "pause" : `${w}x`;
-    this._els.vlabel.textContent = this._view.mode === "dome" ? "Horizon" : "Dome";
+    const next = { dome: "Horizon", horizon: "Globe", globe: "Dome" };
+    this._els.vlabel.textContent = next[this._view.mode] || "Dome";
+    if (this._els.night) {
+      this._els.night.classList.toggle("on", !!this._forceNight);
+      this._els.night.style.display = this._view.mode === "globe" ? "none" : "";
+    }
   }
 
   _onChip(ev) {
@@ -1433,8 +1850,15 @@ class OrbitariumCard extends HTMLElement {
     else if (act === "zoomin") this._zoom(1 / 1.35);
     else if (act === "zoomout") this._zoom(1.35);
     else if (act === "view") {
-      if (this._view.mode === "dome") this._view = { az: this._view.az, alt: 12, fov: 110, mode: "horizon" };
-      else this._view = { az: this._view.az, alt: 90, fov: 182, mode: "dome" };
+      const az = this._view.az || 180;
+      if (this._view.mode === "dome") this._view = { az, alt: 12, fov: 110, mode: "horizon" };
+      else if (this._view.mode === "horizon") this._view = this._globeView();
+      else this._view = { az: Number(this._config.azimuth ?? 180), alt: 90, fov: 182, mode: "dome" };
+      this._bgDirty = true;
+      this._updateControls();
+    } else if (act === "night") {
+      this._forceNight = !this._forceNight;
+      this._bgDirty = true;
       this._updateControls();
     } else if (act === "full") {
       if (document.fullscreenElement) document.exitFullscreen();
@@ -1443,7 +1867,8 @@ class OrbitariumCard extends HTMLElement {
   }
 
   _zoom(factor) {
-    this._view.fov = clamp(this._view.fov * factor, 8, 200);
+    if (this._view.mode === "globe") this._view.gz = clamp(this._view.gz / factor, 0.25, 14);
+    else this._view.fov = clamp(this._view.fov * factor, 8, 200);
   }
 
   // ------------------------------------------------------------- pointer
@@ -1458,10 +1883,10 @@ class OrbitariumCard extends HTMLElement {
       pts.set(ev.pointerId, [ev.offsetX, ev.offsetY]);
       this._active = true;
       if (pts.size === 1) {
-        drag = { x: ev.offsetX, y: ev.offsetY, az: this._view.az, alt: this._view.alt, moved: false };
+        drag = { x: ev.offsetX, y: ev.offsetY, az: this._view.az, alt: this._view.alt, glat: this._view.glat, glon: this._view.glon, moved: false };
       } else if (pts.size === 2) {
         const [a, b] = [...pts.values()];
-        pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), fov: this._view.fov };
+        pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), fov: this._view.fov, gz: this._view.gz };
         drag = null;
       }
     });
@@ -1471,7 +1896,8 @@ class OrbitariumCard extends HTMLElement {
       if (pinch && pts.size === 2) {
         const [a, b] = [...pts.values()];
         const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
-        if (d > 10) this._view.fov = clamp((pinch.fov * pinch.d) / d, 8, 200);
+        if (d > 10 && this._view.mode === "globe") this._view.gz = clamp((pinch.gz * d) / pinch.d, 0.25, 14);
+        else if (d > 10) this._view.fov = clamp((pinch.fov * pinch.d) / d, 8, 200);
         return;
       }
       if (!drag) return;
@@ -1483,6 +1909,12 @@ class OrbitariumCard extends HTMLElement {
       }
       if (!drag.moved) return;
       const degPerPx = this._view.fov / Math.min(this._w, this._h);
+      if (this._view.mode === "globe") {
+        const R = this._G ? this._G.R : Math.min(this._w, this._h) * 0.3;
+        this._view.glon = drag.glon - (dx / R) / DEG;
+        this._view.glat = clamp(drag.glat + (dy / R) / DEG, -85, 85);
+        return;
+      }
       if (this._view.mode === "dome" && this._view.alt > 89) {
         // rotate the dome around the zenith
         const cx = this._w / 2;
@@ -1563,6 +1995,88 @@ class OrbitariumCard extends HTMLElement {
 
   // ---------------------------------------------------------------- info
 
+  _bodyDir(name, jd) {
+    if (name === "Sun") return sunPosition(jd).dir;
+    if (name === "Moon") return moonPosition(jd).dir;
+    const p = planetPositions(jd).find((x) => x.name === name);
+    return p ? p.dir : null;
+  }
+
+  _moonWaxing(jd) {
+    const ill = (t) => {
+      const s = sunPosition(t).dir;
+      const m = moonPosition(t).dir;
+      return (1 - (s[0] * m[0] + s[1] * m[1] + s[2] * m[2])) / 2;
+    };
+    return ill(jd + 0.25) > ill(jd);
+  }
+
+  /** rise, set and culmination for the local calendar day of simMs */
+  _riseSet(name, simMs) {
+    const tz = this._hass?.config?.time_zone || undefined;
+    let parts;
+    try {
+      parts = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
+        .formatToParts(new Date(simMs))
+        .reduce((a, p) => ((a[p.type] = p.value), a), {});
+    } catch (_e) {
+      const d = new Date(simMs);
+      parts = { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate(), hour: d.getHours(), minute: d.getMinutes(), second: d.getSeconds() };
+    }
+    const asUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour % 24, +parts.minute, +parts.second);
+    const offset = Math.round((asUtc - simMs) / 60000) * 60000;
+    const midnight = Date.UTC(+parts.year, +parts.month - 1, +parts.day) - offset;
+    const key = `${name}|${midnight}`;
+    this._rsCache = this._rsCache || new Map();
+    if (this._rsCache.has(key)) return this._rsCache.get(key);
+    const lat = Number(this._config.latitude ?? this._hass.config.latitude);
+    const lon = Number(this._config.longitude ?? this._hass.config.longitude);
+    const h0 = (name === "Sun" ? -0.833 : name === "Moon" ? 0.125 : -0.567) * DEG;
+    const step = 10 * 60000;
+    const altAt = (ms) => {
+      const jd = jdFromMs(ms);
+      const dir = this._bodyDir(name, jd);
+      const o = observerFrame(lat, lon, 0, gmst(jd));
+      const u = dir[0] * o.up[0] + dir[1] * o.up[1] + dir[2] * o.up[2];
+      return Math.asin(clamp(u, -1, 1)) - h0;
+    };
+    let rise = null;
+    let set = null;
+    let best = -Infinity;
+    let bestT = null;
+    let prev = altAt(midnight);
+    if (prev > best) {
+      best = prev;
+      bestT = midnight;
+    }
+    for (let t = midnight + step; t <= midnight + 86400000; t += step) {
+      const a = altAt(t);
+      if (prev < 0 && a >= 0 && rise === null) rise = t - step + (step * -prev) / (a - prev);
+      if (prev >= 0 && a < 0 && set === null) set = t - step + (step * prev) / (prev - a);
+      if (a > best) {
+        best = a;
+        bestT = t;
+      }
+      prev = a;
+    }
+    const fmt = (ms) => {
+      try {
+        return new Intl.DateTimeFormat(this._hass?.locale?.language || "en", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tz }).format(new Date(ms));
+      } catch (_e) {
+        return new Date(ms).toTimeString().slice(0, 5);
+      }
+    };
+    const allUp = rise === null && set === null && prev >= 0;
+    const out = {
+      rise: rise !== null ? fmt(rise) : allUp ? "up all day" : set !== null ? "rose yesterday" : "not today",
+      set: set !== null ? fmt(set) : allUp ? "up all day" : rise !== null ? "after midnight" : "not today",
+      transit: bestT !== null ? `${fmt(bestT)} · ${((best + h0) / DEG).toFixed(0)}°` : "-",
+    };
+    if (this._rsCache.size > 40) this._rsCache.clear();
+    this._rsCache.set(key, out);
+    return out;
+  }
+
   _renderInfo() {
     const el = this._els.info;
     const sel = this._selected;
@@ -1572,6 +2086,7 @@ class OrbitariumCard extends HTMLElement {
     }
     const rows = [];
     let title = "";
+    let picture = "";
     const simMs = this._simNow();
     const jd = jdFromMs(simMs);
     const lat = Number(this._config.latitude ?? this._hass.config.latitude);
@@ -1609,6 +2124,7 @@ class OrbitariumCard extends HTMLElement {
       const group = cat.groups[cat.group[i]];
       const ageDays = jd - rec.epochJd;
       title = cat.names[i];
+      picture = satPicture(this._kind[i], group ? group.color : GOLD);
       rows.push(["NORAD", String(cat.norad[i])]);
       rows.push(["Group", group ? group.name : "-"]);
       rows.push(["Elevation", `${alt.toFixed(1)}°`]);
@@ -1640,18 +2156,39 @@ class OrbitariumCard extends HTMLElement {
         return;
       }
       const [alt, az] = altaz(b.enu);
-      title = b.name;
-      rows.push(["Elevation", `${alt.toFixed(1)}°`]);
-      rows.push(["Azimuth", `${az.toFixed(1)}° ${compass(az)}`]);
+      const info = BODY_FACTS[b.name] || { kind: "", facts: [], note: "" };
+      const AU = 149597870.7;
+      const km = b.type === "moon" ? b.dist : b.dist * AU;
+      const lightS = km / 299792.458;
+      const lightTxt = lightS < 120 ? `${lightS.toFixed(1)} s` : lightS < 7200 ? `${(lightS / 60).toFixed(1)} min` : `${(lightS / 3600).toFixed(1)} h`;
+      let sub = info.kind;
       if (b.type === "moon") {
-        rows.push(["Illuminated", `${Math.round(b.illum * 100)} %`]);
-        rows.push(["Distance", `${Math.round(b.dist).toLocaleString()} km`]);
+        const waxing = this._moonWaxing(jd);
+        sub = `${moonPhaseName(b.illum, waxing)} · ${Math.round(b.illum * 100)} % lit`;
       }
-      if (b.type === "planet") {
-        rows.push(["Distance", `${b.dist.toFixed(2)} AU`]);
-      }
+      const rs = this._riseSet(b.name, simMs);
+      const live = [
+        ["Elevation", `${alt.toFixed(1)}°${alt < 0 ? " (below horizon)" : ""}`],
+        ["Azimuth", `${az.toFixed(1)}° ${compass(az)}`],
+        ["Distance", b.type === "moon" ? `${Math.round(km).toLocaleString()} km` : `${b.dist.toFixed(3)} AU · ${(km / 1e6).toFixed(1)} M km`],
+        ["Light time", lightTxt],
+      ];
+      if (b.type === "planet") live.push(["Brightness", `mag ${b.mag.toFixed(1)}`]);
+      live.push(["Rises", rs.rise], ["Sets", rs.set], ["Highest", rs.transit]);
+      const pic = bodyPicture(b.name, b.illum, b.angle);
+      const cell = ([k, v]) => `<span>${escapeHtml(k)}</span><span>${escapeHtml(v)}</span>`;
+      el.innerHTML = `<button class="close" title="Close">×</button>
+        <div class="bhead"><img class="bpic${b.name === "Saturn" ? " wide" : ""}" src="${pic}" alt="">
+          <div><div class="name">${escapeHtml(b.name)}</div><div class="sub">${escapeHtml(sub)}</div></div></div>
+        <div class="grid">${live.map(cell).join("")}</div>
+        ${info.facts.length ? `<div class="sep"></div><div class="grid facts">${info.facts.map(cell).join("")}</div>` : ""}
+        ${info.note ? `<div class="note">${escapeHtml(info.note)}</div>` : ""}`;
+      el.classList.add("body");
+      el.classList.add("show");
+      return;
     }
-    el.innerHTML = `<button class="close" title="Close">×</button><div class="name">${escapeHtml(title)}</div><div class="grid">${rows
+    el.classList.remove("body");
+    el.innerHTML = `<button class="close" title="Close">×</button>${picture ? `<img class="pic" src="${picture}" alt="">` : ""}<div class="name">${escapeHtml(title)}</div><div class="grid">${rows
       .map(([k, v]) => `<span>${escapeHtml(k)}</span><span>${escapeHtml(v)}</span>`)
       .join("")}</div>`;
     el.classList.add("show");
@@ -1688,6 +2225,8 @@ class OrbitariumCardEditor extends HTMLElement {
           show_planets: "Sun, Moon and planets",
           show_ground: "Hide objects below the horizon",
           visible_only: "Only naked-eye visible satellites",
+          satellite_icons: "Satellite icons (off: small dots)",
+          night_sky: "Always dark sky (night sky switch)",
         })[s.name] || s.name;
       this._form.addEventListener("value-changed", (ev) => {
         this._config = ev.detail.value;
@@ -1699,7 +2238,7 @@ class OrbitariumCardEditor extends HTMLElement {
       { name: "title", selector: { text: {} } },
       {
         name: "view",
-        selector: { select: { mode: "dropdown", options: [{ value: "dome", label: "Dome (whole sky)" }, { value: "horizon", label: "Horizon" }] } },
+        selector: { select: { mode: "dropdown", options: [{ value: "dome", label: "Dome (whole sky)" }, { value: "horizon", label: "Horizon" }, { value: "globe", label: "Globe (Earth from space)" }] } },
       },
       { name: "height", selector: { number: { min: 250, max: 1200, step: 10, mode: "box" } } },
       { name: "fps", selector: { number: { min: 5, max: 60, step: 5, mode: "slider" } } },
@@ -1709,10 +2248,12 @@ class OrbitariumCardEditor extends HTMLElement {
       { name: "show_planets", selector: { boolean: {} } },
       { name: "show_ground", selector: { boolean: {} } },
       { name: "visible_only", selector: { boolean: {} } },
+      { name: "satellite_icons", selector: { boolean: {} } },
+      { name: "night_sky", selector: { boolean: {} } },
     ];
     this._form.data = {
       title: "Orbitarium", view: "dome", fps: 30, star_limit: 6, show_constellations: true,
-      show_labels: true, show_planets: true, show_ground: true, visible_only: false, ...this._config,
+      show_labels: true, show_planets: true, show_ground: true, visible_only: false, satellite_icons: true, night_sky: false, ...this._config,
     };
     if (this._hass) this._form.hass = this._hass;
   }
