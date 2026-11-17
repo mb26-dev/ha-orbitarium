@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5.svg" alt="HACS Custom"></a>
+  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Default-41BDF5.svg" alt="HACS Default"></a>
   <img src="https://img.shields.io/github/v/release/mb26-dev/ha-orbitarium" alt="Release">
   <img src="https://img.shields.io/badge/Home%20Assistant-2025.1%2B-blue" alt="Home Assistant">
   <img src="https://img.shields.io/github/license/mb26-dev/ha-orbitarium" alt="License">
@@ -72,11 +72,29 @@ Pass sensors are created for every NORAD id you enter (default: ISS `25544` and 
 
 ## Installation
 
-### HACS
+### HACS (recommended)
+
+Orbitarium is part of the default HACS catalog.
+
+1. Open **HACS** in Home Assistant, search for **Orbitarium** and download it, or use this button:
+
+   [![Open your Home Assistant instance and open Orbitarium in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=mb26-dev&repository=ha-orbitarium&category=integration)
+
+2. Restart Home Assistant
+3. **Settings → Devices & services → Add integration → Orbitarium**, or use this button:
+
+   [![Open your Home Assistant instance and start setting up Orbitarium.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=orbitarium)
+
+<details>
+<summary>Fallback: add it as a custom repository</summary>
+
+If Orbitarium does not show up in your HACS search yet, add it manually:
 
 1. HACS → three dots → **Custom repositories** → add `https://github.com/mb26-dev/ha-orbitarium` as **Integration**
 2. Install **Orbitarium** and restart Home Assistant
 3. **Settings → Devices & services → Add integration → Orbitarium**
+
+</details>
 
 ### Manual
 
