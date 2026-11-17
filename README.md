@@ -52,6 +52,7 @@ All screenshots use real orbital data from CelesTrak, seen from Ao Nang, Thailan
 - Stars down to magnitude 6 with real colours, constellation lines and names, bright star names
 - Sun, Moon with its current phase, Mercury to Neptune, each with an info card: portrait, position, distance, rise and set times and key facts
 - All satellites of the selected groups, moving in real time (SGP4 propagation, 30 fps by default)
+- Optional rocket bodies and space debris as small dots: see how crowded low Earth orbit really is
 - Satellite icons turned along their direction of flight: flat-panel Starlink style, ISS / Tiangong and a classic satellite for all others
 - Satellites that are **visible to the naked eye** (sunlit while your sky is dark) glow in their group colour, satellites in Earth's shadow are dimmed
 - Tap a satellite for name, NORAD id, elevation, azimuth, range, altitude, speed and status, plus its orbit track
@@ -112,7 +113,7 @@ All settings are done in the UI and can be changed later under **Configure**:
 
 | Option | Default | Description |
 | --- | --- | --- |
-| Satellite groups | Space stations, Brightest, Starlink | CelesTrak groups to load. Starlink alone has more than 11,000 satellites. Space stations also brings a separate **Station traffic** group: docked and visiting spacecraft and small satellites released from the ISS. |
+| Satellite groups | Space stations, Brightest, Starlink | CelesTrak groups to load. Starlink alone has more than 11,000 satellites. Space stations also brings a separate **Station traffic** group: docked and visiting spacecraft and small satellites released from the ISS. **Rocket bodies** (about 2,200) and **Debris** (about 10,000) are off by default; debris never counts as visible. |
 | Pass predictions for | `25544, 48274` | NORAD ids that get a "next visible pass" sensor and a "visible now" binary sensor |
 | Minimum pass elevation | 10° | Lower passes are ignored |
 

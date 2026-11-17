@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.0
+
+### Added
+
+- **Rocket bodies and Debris:** two new satellite groups in the options. *Rocket bodies* (about 2,200 spent upper stages, some from the 1950s) and *Debris* (about 10,000 fragments, for example from the 2007 Fengyun 1C test and the 2009 Iridium 33 / Cosmos 2251 collision). Both are off by default.
+- They are drawn as small dots (bronze for rocket bodies, red for debris) so they do not hide the satellite icons, each with its own chip to show or hide them. Tap one for name, orbit, altitude and status.
+- Rocket bodies are often bright and count as visible to the naked eye like satellites. Debris is far too small to be seen and never counts as visible, neither in the card nor in the *Satellites visible now* sensor.
+
+### Changed
+
+- The automatic switch from icons to dots on crowded screens only counts icon groups, so turning on debris does not turn off the satellite icons.
+- CelesTrak has no group for rocket bodies or debris; Orbitarium uses the CelesTrak name search (`R/B` and `DEB`) for them, with the same 12 hour refresh and 6 hour backoff as all other groups.
+
 ## 1.3.1
 
 ### Changed
