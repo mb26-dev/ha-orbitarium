@@ -19,7 +19,7 @@ import {
   planetPositions,
   isSunlit,
   bvToColor,
-} from "./orbitarium-core.js?v=1.5.0b1";
+} from "./orbitarium-core.js?v=1.5.0";
 import {
   KIND_DEBRIS,
   KIND_FLAT,
@@ -31,10 +31,10 @@ import {
   BODY_FACTS,
   bodyPicture,
   moonPhaseName,
-} from "./orbitarium-art.js?v=1.5.0b1";
-import { loadEarth, renderEarth } from "./orbitarium-earth.js?v=1.5.0b1";
+} from "./orbitarium-art.js?v=1.5.0";
+import { loadEarth, renderEarth } from "./orbitarium-earth.js?v=1.5.0";
 
-const CARD_VERSION = "1.5.0b1";
+const CARD_VERSION = "1.5.0";
 const GOLD = "#d4af37";
 const WARP_STEPS = [-600, -120, -30, -5, 0, 1, 5, 30, 120, 600];
 const CARDINALS = [
