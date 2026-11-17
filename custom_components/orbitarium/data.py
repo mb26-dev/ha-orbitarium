@@ -14,21 +14,25 @@ from typing import Any
 import aiohttp
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CELESTRAK_BACKOFF_HOURS,
     CELESTRAK_CATNR_URL,
     CELESTRAK_GROUP_URL,
     D3C_BASE,
+    DOMAIN,
     EARTH_DAY_FALLBACK_MONTH,
     EARTH_DAY_URL,
     EARTH_DIR,
     EARTH_NIGHT_URL,
     LAND_URL,
     SATELLITE_GROUPS,
+    SATELLITE_LOST_HOURS,
     SIGNAL_CATALOG_UPDATED,
     SKY_DATA_VERSION,
     SKY_FILES,
@@ -47,6 +51,7 @@ _LOGGER = logging.getLogger(__name__)
 USER_AGENT = f"HomeAssistant-Orbitarium/{VERSION}"
 HTTP_TIMEOUT = aiohttp.ClientTimeout(total=90)
 IMAGE_TIMEOUT = aiohttp.ClientTimeout(total=180)
+KNOWN_NAMES = {25544: "ISS", 48274: "Tiangong", 20580: "Hubble"}
 MONTH_NAMES = [
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december",
@@ -99,6 +104,11 @@ def parse_omm_text(text: str) -> list[list[Any]]:
     if not isinstance(data, list):
         raise TypeError("unexpected response")
     return [r for r in (omm_to_row(o) for o in data) if r is not None]
+
+
+def is_missing_response(text: str) -> bool:
+    """CelesTrak answers an unknown or decayed catalogue number with this text."""
+    return text.strip().lower().startswith("no gp data found")
 
 
 def parse_sky_texts(texts: dict[str, str]) -> dict[str, Any]:
@@ -212,6 +222,10 @@ class OrbitariumData:
         self.group_updated: dict[str, float] = {}
         self.last_attempt: float = 0.0
         self.last_error: str | None = None
+        # no CelesTrak request before this time (set after a failed download, persisted)
+        self.retry_after: float = 0.0
+        # tracked NORAD ids that CelesTrak does not know (any more), with the first time seen
+        self.missing_since: dict[int, float] = {}
         self.sky: dict[str, Any] | None = None
         self.rows: list[list[Any]] = []  # merged rows incl. group index at [10]
         self.satrecs: dict[int, SatRec] = {}
@@ -236,6 +250,10 @@ class OrbitariumData:
         if isinstance(stored, dict):
             self.group_rows = stored.get("groups", {}) or {}
             self.group_updated = {k: float(v) for k, v in (stored.get("updated", {}) or {}).items()}
+            self.retry_after = float(stored.get("retry_after", 0.0) or 0.0)
+            self.missing_since = {
+                int(k): float(v) for k, v in (stored.get("missing_since", {}) or {}).items() if str(k).isdigit()
+            }
         sky = await self._store_sky.async_load()
         if isinstance(sky, dict) and sky.get("version") == SKY_DATA_VERSION:
             self.sky = sky
@@ -245,10 +263,17 @@ class OrbitariumData:
 
     def _tracked_changed(self) -> bool:
         have = {row[0] for row in self.group_rows.get("tracked", [])}
-        return any(t not in have for t in self.tracked)
+        # ids CelesTrak does not know are checked again with the regular refresh only
+        return any(t not in have and t not in self.missing_since for t in self.tracked)
+
+    def in_backoff(self) -> bool:
+        """True while CelesTrak must not be asked after a failed download."""
+        return time.time() < self.retry_after
 
     def needs_refresh(self) -> bool:
         now = time.time()
+        if now < self.retry_after:
+            return False
         wanted = list(self.groups) + (["tracked"] if self.tracked else [])
         for key in wanted:
             if now - self.group_updated.get(key, 0.0) > TLE_REFRESH_HOURS * 3600:
@@ -262,60 +287,133 @@ class OrbitariumData:
             self.last_attempt = now
             session = async_get_clientsession(self.hass)
             changed = False
+            failed = False
             errors: list[str] = []
             for group in self.groups:
                 if not force and now - self.group_updated.get(group, 0.0) <= TLE_REFRESH_HOURS * 3600:
                     continue
                 url = CELESTRAK_GROUP_URL.format(group=group)
-                rows = await self._fetch_omm(session, url, errors, group)
+                rows, _missing = await self._fetch_omm(session, url, errors, group)
                 if rows is not None:
                     self.group_rows[group] = rows
                     self.group_updated[group] = now
                     changed = True
+                else:
+                    # a whole group never disappears: any problem here is on the CelesTrak side
+                    failed = True
+                if failed:
+                    # CelesTrak has a problem or limits us: stop asking for now
+                    break
             tracked_stale = now - self.group_updated.get("tracked", 0.0) > TLE_REFRESH_HOURS * 3600
-            if self.tracked and (force or tracked_stale or self._tracked_changed()):
+            if not failed and self.tracked and (force or tracked_stale or self._tracked_changed()):
                 tracked_rows: list[list[Any]] = []
-                ok = True
+                complete = True
                 for catnr in self.tracked:
-                    rows = await self._fetch_omm(session, CELESTRAK_CATNR_URL.format(catnr=catnr), errors, f"CATNR {catnr}")
-                    if rows is None:
-                        ok = False
+                    rows, missing = await self._fetch_omm(
+                        session, CELESTRAK_CATNR_URL.format(catnr=catnr), errors, f"CATNR {catnr}"
+                    )
+                    if missing:
+                        self.missing_since.setdefault(catnr, now)
                         continue
+                    if rows is None:
+                        failed = True
+                        complete = False
+                        break
+                    self.missing_since.pop(catnr, None)
                     tracked_rows.extend(rows)
-                if ok or tracked_rows:
+                if complete or tracked_rows:
+                    # keep the elements of satellites that could not be refreshed
+                    have = {row[0] for row in tracked_rows}
+                    for row in self.group_rows.get("tracked", []):
+                        if row[0] not in have and row[0] in self.tracked:
+                            tracked_rows.append(row)
                     self.group_rows["tracked"] = tracked_rows
-                    self.group_updated["tracked"] = now
+                    if complete:
+                        self.group_updated["tracked"] = now
                     changed = True
             self.last_error = "; ".join(errors) if errors else None
+            if failed:
+                self.retry_after = now + CELESTRAK_BACKOFF_HOURS * 3600
+                _LOGGER.warning(
+                    "CelesTrak download failed, next attempt in %s hours (%s)",
+                    CELESTRAK_BACKOFF_HOURS,
+                    datetime.fromtimestamp(self.retry_after, tz=timezone.utc).isoformat(timespec="minutes"),
+                )
+            else:
+                self.retry_after = 0.0
+            self.missing_since = {k: v for k, v in self.missing_since.items() if k in self.tracked}
+            await self._store_catalog.async_save({
+                "groups": self.group_rows,
+                "updated": self.group_updated,
+                "retry_after": self.retry_after,
+                "missing_since": {str(k): v for k, v in self.missing_since.items()},
+            })
             if changed:
-                await self._store_catalog.async_save({"groups": self.group_rows, "updated": self.group_updated})
                 await self.hass.async_add_executor_job(self._rebuild)
                 async_dispatcher_send(self.hass, SIGNAL_CATALOG_UPDATED)
+            self.async_update_repairs()
             return changed
 
-    async def _fetch_omm(self, session: aiohttp.ClientSession, url: str, errors: list[str], label: str) -> list[list[Any]] | None:
+    def async_update_repairs(self) -> None:
+        """Raise or clear the repair issue for tracked satellites CelesTrak no longer knows."""
+        now = time.time()
+        for norad in self.tracked:
+            issue_id = f"satellite_lost_{norad}"
+            since = self.missing_since.get(norad)
+            if since is not None and now - since >= SATELLITE_LOST_HOURS * 3600:
+                ir.async_create_issue(
+                    self.hass,
+                    DOMAIN,
+                    issue_id,
+                    is_fixable=False,
+                    severity=ir.IssueSeverity.WARNING,
+                    translation_key="satellite_lost",
+                    translation_placeholders={
+                        "norad": str(norad),
+                        "name": KNOWN_NAMES.get(norad) or self.name_of(norad) or f"NORAD {norad}",
+                    },
+                )
+            else:
+                ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+
+    async def _fetch_omm(
+        self, session: aiohttp.ClientSession, url: str, errors: list[str], label: str
+    ) -> tuple[list[list[Any]] | None, bool]:
+        """Download one CelesTrak query. Returns (rows, missing).
+
+        rows is None on any failure. missing is True when CelesTrak answered
+        normally but does not know the object (decayed or wrong id); that is
+        not a server problem and does not trigger the backoff.
+        """
         try:
             async with session.get(url, timeout=HTTP_TIMEOUT, headers={"User-Agent": USER_AGENT}) as resp:
                 text = await resp.text()
                 if resp.status != 200:
                     errors.append(f"{label}: HTTP {resp.status}")
                     _LOGGER.warning("CelesTrak returned HTTP %s for %s: %s", resp.status, label, text[:200])
-                    return None
+                    return None, False
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             errors.append(f"{label}: {err}")
             _LOGGER.warning("Could not download %s from CelesTrak: %s", label, err)
-            return None
+            return None, False
+        if is_missing_response(text):
+            errors.append(f"{label}: not found at CelesTrak")
+            _LOGGER.warning("CelesTrak has no data for %s", label)
+            return None, True
         try:
             rows = await self.hass.async_add_executor_job(parse_omm_text, text)
         except ValueError:
             errors.append(f"{label}: {text.strip()[:80]}")
             _LOGGER.warning("CelesTrak returned no JSON for %s: %s", label, text.strip()[:200])
-            return None
+            return None, False
         except TypeError:
             errors.append(f"{label}: unexpected response")
-            return None
+            return None, False
+        if not rows:
+            errors.append(f"{label}: empty response")
+            return None, True
         _LOGGER.debug("Loaded %s objects for %s", len(rows), label)
-        return rows
+        return rows, False
 
     async def async_ensure_sky(self) -> None:
         """Download and cache the star catalogue once."""

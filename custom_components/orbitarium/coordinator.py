@@ -18,6 +18,7 @@ from .const import (
     DOMAIN,
     OVERHEAD_SCAN_SECONDS,
     PASS_HORIZON_HOURS,
+    PASS_SCAN_SECONDS,
     PASS_REFRESH_MINUTES,
     SIGNAL_CATALOG_UPDATED,
 )
@@ -25,6 +26,7 @@ from .data import OrbitariumData
 from .orbit import (
     Observer,
     Pass,
+    compass,
     find_passes,
     is_sunlit,
     jd_from_unix,
@@ -47,6 +49,9 @@ class SkyState:
     visible: list[dict[str, Any]] = field(default_factory=list)
     passes: dict[int, list[Pass]] = field(default_factory=dict)
     passes_computed_at: float = 0.0
+    overhead_computed_at: float = 0.0
+    # live position and visibility of every tracked satellite
+    tracked_now: dict[int, dict[str, Any]] = field(default_factory=dict)
 
 
 def compute_overhead(data: OrbitariumData, obs: Observer, now: float) -> tuple[int, int, float, list[dict[str, Any]]]:
@@ -80,6 +85,35 @@ def compute_overhead(data: OrbitariumData, obs: Observer, now: float) -> tuple[i
             })
     visible.sort(key=lambda v: v["elevation"], reverse=True)
     return above, len(visible), sun_el, visible
+
+
+def compute_tracked(data: OrbitariumData, obs: Observer, now: float, min_el: float) -> dict[int, dict[str, Any]]:
+    """Live position and naked-eye visibility of the tracked satellites."""
+    jd = jd_from_unix(now)
+    frame = obs.frame(jd)
+    sun = sun_direction(jd)
+    sun_el = sun_elevation(frame, sun)
+    out: dict[int, dict[str, Any]] = {}
+    for norad in data.tracked:
+        rec = data.satrecs.get(norad)
+        if rec is None:
+            continue
+        r = rec.position_at_jd(jd)
+        if r is None:
+            continue
+        el, az, rng = look_angles(frame, r)
+        lit = is_sunlit(r, sun)
+        out[norad] = {
+            "elevation": round(el, 1),
+            "azimuth": round(az, 1),
+            "direction": compass(az),
+            "range_km": round(rng) if el > 0 else None,
+            "sunlit": lit,
+            "sun_elevation": round(sun_el, 1),
+            "dark_sky": sun_el <= -6.0,
+            "visible": el >= min_el and lit and sun_el <= -6.0,
+        }
+    return out
 
 
 def compute_passes(data: OrbitariumData, obs: Observer, now: float, min_el: float) -> dict[int, list[Pass]]:
@@ -131,24 +165,54 @@ class OrbitariumCoordinator(DataUpdateCoordinator[SkyState]):
                 return True
         return False
 
+    def _pass_close(self, state: SkyState, now: float) -> bool:
+        """A tracked satellite is up or rises before the next regular scan."""
+        if any(t["elevation"] > -1.0 for t in state.tracked_now.values()):
+            return True
+        horizon = now + OVERHEAD_SCAN_SECONDS + PASS_SCAN_SECONDS
+        for passes in state.passes.values():
+            for p in passes:
+                if p.end >= now and p.start <= horizon:
+                    return True
+        return False
+
     async def _async_update_data(self) -> SkyState:
         now = time.time()
         obs = self.observer
-        state = SkyState(passes=self._state.passes, passes_computed_at=self._state.passes_computed_at)
+        prev = self._state
+        state = SkyState(
+            passes=prev.passes,
+            passes_computed_at=prev.passes_computed_at,
+            above_horizon=prev.above_horizon,
+            visible_now=prev.visible_now,
+            sun_elevation=prev.sun_elevation,
+            visible=prev.visible,
+            overhead_computed_at=prev.overhead_computed_at,
+        )
         if self.sky_data.satrecs:
-            above, visible_count, sun_el, visible = await self.hass.async_add_executor_job(
-                compute_overhead, self.sky_data, obs, now
-            )
-            state.above_horizon = above
-            state.visible_now = visible_count
-            state.sun_elevation = sun_el
-            state.visible = visible[:15]
+            # the scan over the whole catalogue only every OVERHEAD_SCAN_SECONDS,
+            # the tracked satellites on every (faster) update during a pass
+            if now - prev.overhead_computed_at >= OVERHEAD_SCAN_SECONDS - 1 or self._force_passes:
+                above, visible_count, sun_el, visible = await self.hass.async_add_executor_job(
+                    compute_overhead, self.sky_data, obs, now
+                )
+                state.above_horizon = above
+                state.visible_now = visible_count
+                state.sun_elevation = sun_el
+                state.visible = visible[:15]
+                state.overhead_computed_at = now
             if self._passes_stale(now):
                 state.passes = await self.hass.async_add_executor_job(
                     compute_passes, self.sky_data, obs, now, self.min_el
                 )
                 state.passes_computed_at = now
                 self._force_passes = False
+            state.tracked_now = await self.hass.async_add_executor_job(
+                compute_tracked, self.sky_data, obs, now, self.min_el
+            )
         state.computed_at = now
         self._state = state
+        seconds = PASS_SCAN_SECONDS if self._pass_close(state, now) else OVERHEAD_SCAN_SECONDS
+        if self.update_interval != timedelta(seconds=seconds):
+            self.update_interval = timedelta(seconds=seconds)
         return state
