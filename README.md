@@ -11,6 +11,7 @@
   <img src="https://img.shields.io/github/v/release/mb26-dev/ha-orbitarium" alt="Release">
   <img src="https://img.shields.io/badge/Home%20Assistant-2025.1%2B-blue" alt="Home Assistant">
   <img src="https://img.shields.io/github/license/mb26-dev/ha-orbitarium" alt="License">
+  <a href="https://ko-fi.com/mb26dev"><img src="https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-FF5E5B?logo=ko-fi&logoColor=white" alt="Buy me a coffee on Ko-fi"></a>
 </p>
 
 # Orbitarium
@@ -199,6 +200,14 @@ A satellite counts as visible to the naked eye when it is at least 10° above th
 ## Accuracy
 
 Satellite positions use SGP4 with the newest CelesTrak elements, which is accurate to roughly a kilometre for fresh data. Geostationary and navigation satellites use a simplified model without lunar-solar perturbations, which is more than enough for a sky view. Sun, Moon and planets use low precision formulas (well below 1° for this purpose).
+
+## Support
+
+If Orbitarium brightens your dashboard, a coffee keeps the satellites flying. ☕🛰️
+
+<a href="https://ko-fi.com/mb26dev"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi"></a>
+
+A star on GitHub, a bug report or a screenshot of your dashboard helps just as much. Thank you!
 
 ## Credits
 
