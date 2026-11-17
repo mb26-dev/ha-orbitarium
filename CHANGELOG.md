@@ -4,10 +4,15 @@
 
 ### Added
 
-- Satellite icons: original vector artwork for flat-panel broadband satellites (Starlink, OneWeb, Kuiper), the large stations (ISS, Tiangong) and all other satellites, turned along their direction of flight.
-- Icons grow when you zoom in, carry a soft aura in their group colour and glow brighter when they are visible to the naked eye.
+- **Satellite icons:** original vector artwork for flat-panel broadband satellites (Starlink, OneWeb, Kuiper), the ISS, Tiangong and all other satellites, turned along their direction of flight. Icons grow when you zoom in, carry a soft aura in their group colour and glow brighter when they are visible to the naked eye. Card option `satellite_icons` (default `true`).
+- **Globe view:** Earth from space with faint land masses, graticule, day and night side, your home location and every satellite in orbit around it. Drag to turn the globe, zoom out to see the geostationary ring. Selecting a satellite draws ±50 minutes of its orbit.
+- **Night sky switch:** moon button in the toolbar (or `night_sky: true`) draws a dark sky in daylight, so the satellites stand out. Counts and visibility still follow the real sun.
+- **Sun, Moon and planet cards:** a rendered portrait, live elevation, azimuth, distance, light time, brightness, rise, set and culmination for today, plus key facts. The Moon card shows the current phase.
 - Satellite picture in the info panel.
-- Card option `satellite_icons` (default `true`), set it to `false` for the classic dots.
+
+### Changed
+
+- The star catalogue now also contains land outlines (Natural Earth, public domain). It is downloaded again once after the update.
 
 ## 1.0.1
 

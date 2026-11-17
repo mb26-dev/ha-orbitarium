@@ -24,8 +24,10 @@ Everything is calculated locally in Home Assistant and in your browser. No API k
 **Lovelace card** `custom:orbitarium-card` (installed and registered automatically)
 
 - Planetarium view of the whole sky (dome) or towards the horizon, with atmosphere, twilight glow and ground
+- Globe view: Earth from space with land masses, day and night side and all satellites in orbit
+- Night sky switch: a dark sky even in daylight, so every satellite stands out
 - Stars down to magnitude 6 with real colours, constellation lines and names, bright star names
-- Sun, Moon with its current phase, Mercury to Neptune
+- Sun, Moon with its current phase, Mercury to Neptune, each with an info card: portrait, position, distance, rise and set times and key facts
 - All satellites of the selected groups, moving in real time (SGP4 propagation, 30 fps by default)
 - Satellite icons turned along their direction of flight: flat-panel Starlink style, ISS / Tiangong and a classic satellite for all others
 - Satellites that are **visible to the naked eye** (sunlit while your sky is dark) glow in their group colour, satellites in Earth's shadow are dimmed
@@ -83,7 +85,7 @@ All options are optional:
 ```yaml
 type: custom:orbitarium-card
 title: Orbitarium
-view: dome              # dome (whole sky) or horizon
+view: dome              # dome (whole sky), horizon or globe
 azimuth: 180            # initial viewing direction in degrees
 height: 440             # height in px on wide screens; leave it out in a panel view to fill the screen
 fps: 30                 # lower it on weak tablets
@@ -94,6 +96,7 @@ show_planets: true
 show_ground: true       # false shows objects below the horizon too
 visible_only: false     # only satellites that are visible to the naked eye
 satellite_icons: true   # false draws small dots instead of icons
+night_sky: false        # true starts with a dark sky in daylight
 groups:                 # groups shown when the card opens (default: all loaded groups)
   - stations
   - starlink
@@ -138,6 +141,8 @@ Satellite positions use SGP4 with the newest CelesTrak elements, which is accura
 
 - Orbital elements: [CelesTrak](https://celestrak.org)
 - Stars and constellations: [d3-celestial](https://github.com/ofrohn/d3-celestial) by Olaf Frohn (BSD-3-Clause)
+- Land outlines: [Natural Earth](https://www.naturalearthdata.com) (public domain)
+- Satellite, Sun, Moon and planet pictures are original drawings rendered in the card
 - SGP4: port of [satellite.js](https://github.com/shashwatak/satellite-js) (MIT), based on the work of David Vallado
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the licence texts.

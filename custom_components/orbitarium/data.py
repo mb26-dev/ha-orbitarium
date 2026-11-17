@@ -21,6 +21,7 @@ from .const import (
     CELESTRAK_CATNR_URL,
     CELESTRAK_GROUP_URL,
     D3C_BASE,
+    LAND_URL,
     SATELLITE_GROUPS,
     SIGNAL_CATALOG_UPDATED,
     SKY_DATA_VERSION,
@@ -139,12 +140,34 @@ def process_sky_files(raw: dict[str, Any]) -> dict[str, Any]:
             int(_num(props.get("rank")) or 3),
         ])
 
+    land: list[list[list[float]]] = []
+    for feat in (raw.get("land") or {}).get("features", []):
+        geom = feat.get("geometry") or {}
+        if geom.get("type") == "Polygon":
+            polys = [geom.get("coordinates", [])]
+        elif geom.get("type") == "MultiPolygon":
+            polys = geom.get("coordinates", [])
+        else:
+            continue
+        for poly in polys:
+            rings: list[list[float]] = []
+            for ring in poly:
+                flat: list[float] = []
+                for pt in ring:
+                    flat.append(round(pt[0], 2))
+                    flat.append(round(pt[1], 2))
+                if len(flat) >= 6:
+                    rings.append(flat)
+            if rings:
+                land.append(rings)
+
     return {
         "version": SKY_DATA_VERSION,
         "stars": stars,
         "names": names,
         "lines": lines,
         "constellations": constellations,
+        "land": land,
     }
 
 
@@ -269,6 +292,9 @@ class OrbitariumData:
                 async with session.get(D3C_BASE + filename, timeout=HTTP_TIMEOUT, headers={"User-Agent": USER_AGENT}) as resp:
                     resp.raise_for_status()
                     raw[key] = json.loads(await resp.text())
+            async with session.get(LAND_URL, timeout=HTTP_TIMEOUT, headers={"User-Agent": USER_AGENT}) as resp:
+                resp.raise_for_status()
+                raw["land"] = json.loads(await resp.text())
         except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as err:
             _LOGGER.warning("Could not download star catalogue (will retry later): %s", err)
             return
@@ -276,7 +302,12 @@ class OrbitariumData:
         self.sky = sky
         await self._store_sky.async_save(sky)
         await self.hass.async_add_executor_job(self._rebuild_sky_gzip)
-        _LOGGER.info("Star catalogue ready: %s stars, %s constellation lines", len(sky["stars"]), len(sky["lines"]))
+        _LOGGER.info(
+            "Sky catalogue ready: %s stars, %s constellation lines, %s land polygons",
+            len(sky["stars"]),
+            len(sky["lines"]),
+            len(sky["land"]),
+        )
 
     # ---------------------------------------------------------------- building
 

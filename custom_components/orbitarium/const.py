@@ -46,7 +46,10 @@ SKY_FILES = {
     "constellations": "constellations.json",
     "starnames": "starnames.json",
 }
-SKY_DATA_VERSION = 1
+# Land outlines for the globe view: Natural Earth 1:110m (public domain),
+# pinned to a release tag.
+LAND_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_110m_land.geojson"
+SKY_DATA_VERSION = 2
 STAR_NAME_MAX_MAG = 2.6
 
 STORAGE_VERSION = 1

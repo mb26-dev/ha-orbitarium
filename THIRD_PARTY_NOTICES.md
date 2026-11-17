@@ -37,6 +37,17 @@ Stars, star names, constellation lines and names are downloaded once from
 pinned to commit `7e720a3de062059d4c5400a379146a601d9010e0`. The star data is derived from the
 Hipparcos / HYG catalogues.
 
+## Land outlines (downloaded at runtime, not redistributed)
+
+Land polygons for the globe view are downloaded once from
+[Natural Earth](https://www.naturalearthdata.com) (1:110m land, public domain) via
+[natural-earth-vector](https://github.com/nvkelso/natural-earth-vector), pinned to release `v5.1.2`.
+
+## Artwork
+
+The satellite, Sun, Moon and planet pictures are original drawings rendered by the card at runtime.
+No photographs or third party images are included.
+
 ## Planet positions
 
 Approximate Keplerian elements for the planets from E. M. Standish, JPL Solar System Dynamics,
