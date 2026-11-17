@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "orbitarium"
-VERSION = "1.5.0b1"
+VERSION = "1.5.0b2"
 
 CONF_GROUPS = "groups"
 CONF_TRACKED = "tracked_satellites"
@@ -17,6 +17,7 @@ DEFAULT_MIN_ELEVATION = 10
 SATELLITE_GROUPS: list[tuple[str, str, str]] = [
     ("stations", "Space stations", "#ffd166"),
     ("visual", "Brightest", "#ffffff"),
+    ("last-30-days", "Recent launches", "#7dffb6"),
     ("starlink", "Starlink", "#7fdcff"),
     ("oneweb", "OneWeb", "#b388ff"),
     ("kuiper", "Amazon Kuiper", "#ff9e80"),
@@ -105,5 +106,10 @@ SIGNAL_CATALOG_UPDATED = f"{DOMAIN}_catalog_updated"
 OVERHEAD_SCAN_SECONDS = 120
 # update interval while a tracked satellite is up or about to rise
 PASS_SCAN_SECONDS = 10
+# satellite trains: at least this many recently launched satellites visible
+# within this angle of each other on the sky
+RECENT_GROUP = "last-30-days"
+TRAIN_MIN_SATELLITES = 5
+TRAIN_RADIUS_DEG = 25.0
 PASS_REFRESH_MINUTES = 15
 PASS_HORIZON_HOURS = 72

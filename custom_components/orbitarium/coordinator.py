@@ -21,7 +21,10 @@ from .const import (
     PASS_HORIZON_HOURS,
     PASS_SCAN_SECONDS,
     PASS_REFRESH_MINUTES,
+    RECENT_GROUP,
     SIGNAL_CATALOG_UPDATED,
+    TRAIN_MIN_SATELLITES,
+    TRAIN_RADIUS_DEG,
 )
 from .data import OrbitariumData
 from .orbit import (
@@ -53,6 +56,8 @@ class SkyState:
     overhead_computed_at: float = 0.0
     # live position and visibility of every tracked satellite
     tracked_now: dict[int, dict[str, Any]] = field(default_factory=dict)
+    # satellite train of recently launched satellites (None: group not loaded)
+    train: dict[str, Any] | None = None
 
 
 def compute_overhead(data: OrbitariumData, obs: Observer, now: float) -> tuple[int, int, float, list[dict[str, Any]]]:
@@ -119,6 +124,68 @@ def compute_tracked(data: OrbitariumData, obs: Observer, now: float, min_el: flo
     return out
 
 
+def compute_train(data: OrbitariumData, obs: Observer, now: float) -> dict[str, Any] | None:
+    """Look for a satellite train: recently launched satellites close together and visible."""
+    keys = list(data.group_counts())
+    if RECENT_GROUP not in keys:
+        return None
+    gi = keys.index(RECENT_GROUP)
+    jd = jd_from_unix(now)
+    frame = obs.frame(jd)
+    sun = sun_direction(jd)
+    sun_el = sun_elevation(frame, sun)
+    result: dict[str, Any] = {
+        "visible": False,
+        "count": 0,
+        "elevation": None,
+        "azimuth": None,
+        "direction": None,
+        "satellites": [],
+        "recent_visible": 0,
+        "dark_sky": sun_el <= -6.0,
+    }
+    if sun_el > -6.0:
+        return result
+    points: list[tuple[float, float, str, list[float]]] = []
+    for row in data.rows:
+        if row[10] != gi:
+            continue
+        rec = data.satrecs.get(row[0])
+        if rec is None:
+            continue
+        r = rec.position_at_jd(jd)
+        if r is None:
+            continue
+        el, az, _rng = look_angles(frame, r)
+        if el < 10.0 or not is_sunlit(r, sun) or math.sqrt(r[0] ** 2 + r[1] ** 2 + r[2] ** 2) > 6371.0 + 2000.0:
+            continue
+        ce = math.cos(math.radians(el))
+        vec = [ce * math.sin(math.radians(az)), ce * math.cos(math.radians(az)), math.sin(math.radians(el))]
+        points.append((el, az, row[1], vec))
+    result["recent_visible"] = len(points)
+    if len(points) < TRAIN_MIN_SATELLITES:
+        return result
+    limit = math.cos(math.radians(TRAIN_RADIUS_DEG))
+    best: list[int] = []
+    for i, (_, _, _, vi) in enumerate(points):
+        group = [j for j, (_, _, _, vj) in enumerate(points) if vi[0] * vj[0] + vi[1] * vj[1] + vi[2] * vj[2] >= limit]
+        if len(group) > len(best):
+            best = group
+    if len(best) < TRAIN_MIN_SATELLITES:
+        return result
+    members = sorted((points[j] for j in best), key=lambda p: p[0], reverse=True)
+    top = members[0]
+    result.update({
+        "visible": True,
+        "count": len(members),
+        "elevation": round(top[0], 1),
+        "azimuth": round(top[1], 1),
+        "direction": compass(top[1]),
+        "satellites": [m[2] for m in members[:10]],
+    })
+    return result
+
+
 def compute_passes(data: OrbitariumData, obs: Observer, now: float, min_el: float) -> dict[int, list[Pass]]:
     out: dict[int, list[Pass]] = {}
     for norad in data.tracked:
@@ -172,6 +239,8 @@ class OrbitariumCoordinator(DataUpdateCoordinator[SkyState]):
         """A tracked satellite is up or rises before the next regular scan."""
         if any(t["elevation"] > -1.0 for t in state.tracked_now.values()):
             return True
+        if state.train and state.train["visible"]:
+            return True
         horizon = now + OVERHEAD_SCAN_SECONDS + PASS_SCAN_SECONDS
         for passes in state.passes.values():
             for p in passes:
@@ -213,6 +282,7 @@ class OrbitariumCoordinator(DataUpdateCoordinator[SkyState]):
             state.tracked_now = await self.hass.async_add_executor_job(
                 compute_tracked, self.sky_data, obs, now, self.min_el
             )
+            state.train = await self.hass.async_add_executor_job(compute_train, self.sky_data, obs, now)
         state.computed_at = now
         self._state = state
         seconds = PASS_SCAN_SECONDS if self._pass_close(state, now) else OVERHEAD_SCAN_SECONDS
