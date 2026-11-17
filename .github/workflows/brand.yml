@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "brand_src/**"
+      - ".github/workflows/brand.yml"
   workflow_dispatch:
 
 permissions:
@@ -19,10 +20,14 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y librsvg2-bin fonts-dejavu-core
       - name: Render
         run: |
-          mkdir -p custom_components/orbitarium/brand
-          rsvg-convert -w 256 -h 256 brand_src/icon.svg -o custom_components/orbitarium/brand/icon.png
-          rsvg-convert -h 256 brand_src/logo.svg -o custom_components/orbitarium/brand/logo.png
-          rsvg-convert -h 256 brand_src/dark_logo.svg -o custom_components/orbitarium/brand/dark_logo.png
+          out=custom_components/orbitarium/brand
+          mkdir -p "$out"
+          rsvg-convert -w 256 -h 256 brand_src/icon.svg -o "$out/icon.png"
+          rsvg-convert -w 512 -h 512 brand_src/icon.svg -o "$out/icon@2x.png"
+          rsvg-convert -h 256 brand_src/logo.svg -o "$out/logo.png"
+          rsvg-convert -h 512 brand_src/logo.svg -o "$out/logo@2x.png"
+          rsvg-convert -h 256 brand_src/dark_logo.svg -o "$out/dark_logo.png"
+          rsvg-convert -h 512 brand_src/dark_logo.svg -o "$out/dark_logo@2x.png"
       - name: Commit
         run: |
           git config user.name "github-actions[bot]"
