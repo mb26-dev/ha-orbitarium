@@ -4,6 +4,8 @@
 
 ### Added
 
+- **Recent launches:** new satellite group with everything launched in the last 30 days (CelesTrak `last-30-days`), in its own mint colour. Fresh Starlink batches show up here within about a day of a Falcon 9 launch. Off by default.
+- **Satellite train visible** binary sensor (with Recent launches on): on while at least 5 recently launched satellites are visible to the naked eye close together on the sky, the famous "string of pearls" after a Starlink launch. Attributes with count, direction, elevation and names. Updates every 10 seconds while a train is up.
 - **Icons for rocket bodies and debris:** a spent upper stage with its engine bell and a torn metal fragment, also in the info panel. Rocket bodies in other groups (the *Brightest* list has many) get the rocket icon too.
 
 ### Changed

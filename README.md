@@ -53,6 +53,7 @@ All screenshots use real orbital data from CelesTrak, seen from Ao Nang, Thailan
 - Sun, Moon with its current phase, Mercury to Neptune, each with an info card: portrait, position, distance, rise and set times and key facts
 - All satellites of the selected groups, moving in real time (SGP4 propagation, 30 fps by default)
 - Optional rocket bodies and space debris as small dots: see how crowded low Earth orbit really is
+- Optional *Recent launches* group: watch fresh Starlink trains a day after a launch
 - Satellite icons turned along their direction of flight: flat-panel Starlink style, ISS / Tiangong and a classic satellite for all others
 - Satellites that are **visible to the naked eye** (sunlit while your sky is dark) glow in their group colour, satellites in Earth's shadow are dimmed
 - Tap a satellite for name, NORAD id, elevation, azimuth, range, altitude, speed and status, plus its orbit track
@@ -70,6 +71,7 @@ All screenshots use real orbital data from CelesTrak, seen from Ao Nang, Thailan
 | Satellites visible now | sunlit satellites above 10° while the sky is dark | list of the 15 highest ones |
 | `<name>` next visible pass | start of the next naked-eye visible pass (timestamp) | max elevation, directions, duration, next 5 visible passes |
 | `<name>` visible now (binary sensor) | on while the satellite is above the minimum pass elevation, sunlit and your sky is dark | elevation, azimuth, direction, range, sunlit, sun elevation |
+| Satellite train visible (binary sensor, with *Recent launches* on) | on while at least 5 recently launched satellites are visible close together, like a Starlink train after a launch | count, direction, elevation, satellite names |
 
 Pass sensors and visible now binary sensors are created for every NORAD id you enter (default: ISS `25544` and Tiangong `48274`). While one of them is up or about to rise, Orbitarium updates every 10 seconds instead of every 2 minutes, so automations react right when the pass starts.
 
@@ -188,6 +190,25 @@ actions:
   - action: light.turn_on
     target:
       entity_id: light.garden
+mode: single
+```
+
+Get a notification when a Starlink train is visible (needs the *Recent launches* group):
+
+```yaml
+alias: Satellite train overhead
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.orbitarium_satellite_train_visible
+    to: "on"
+actions:
+  - action: notify.notify
+    data:
+      title: Satellite train visible
+      message: >-
+        {{ state_attr('binary_sensor.orbitarium_satellite_train_visible', 'count') }} satellites in a row,
+        look {{ state_attr('binary_sensor.orbitarium_satellite_train_visible', 'direction') }}
+        at {{ state_attr('binary_sensor.orbitarium_satellite_train_visible', 'elevation') }}° elevation.
 mode: single
 ```
 
