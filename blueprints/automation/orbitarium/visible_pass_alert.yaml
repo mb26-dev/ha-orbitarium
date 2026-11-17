@@ -1,0 +1,150 @@
+blueprint:
+  name: Orbitarium visible pass alert
+  description: >-
+    Get a notification before a satellite tracked by Orbitarium (ISS, Tiangong, Hubble ...)
+    flies over you and can be seen with the naked eye. Orbitarium only counts passes while
+    your sky is dark and the satellite is sunlit, so alerts only come at dusk, at night and
+    at dawn. Optionally skip passes when the sky is cloudy and send a second alert when the
+    satellite rises.
+  domain: automation
+  source_url: https://github.com/mb26-dev/ha-orbitarium/blob/main/blueprints/automation/orbitarium/visible_pass_alert.yaml
+  input:
+    pass_sensor:
+      name: Satellite
+      description: The "next visible pass" sensor of the satellite.
+      selector:
+        entity:
+          filter:
+            - integration: orbitarium
+              domain: sensor
+              device_class: timestamp
+    notify_device:
+      name: Phone
+      description: Device with the Home Assistant Companion app that gets the alert.
+      selector:
+        device:
+          filter:
+            - integration: mobile_app
+    lead_minutes:
+      name: Minutes before the pass
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 60
+          unit_of_measurement: min
+          mode: slider
+    min_elevation:
+      name: Minimum height of the pass
+      description: Passes that stay lower than this are skipped. Low passes are hard to see behind buildings and trees.
+      default: 30
+      selector:
+        number:
+          min: 10
+          max: 90
+          unit_of_measurement: "°"
+          mode: slider
+    weather_entity:
+      name: Weather (optional)
+      description: Weather entity with cloud coverage. Leave empty to ignore the clouds.
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: weather
+    max_clouds:
+      name: Maximum cloud coverage
+      description: Passes are skipped while the cloud coverage is higher than this.
+      default: 50
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+          mode: slider
+    alert_at_start:
+      name: Second alert when it rises
+      description: Send another short alert with the direction to look at when the pass starts.
+      default: true
+      selector:
+        boolean:
+
+mode: queued
+max_exceeded: silent
+
+trigger_variables:
+  pass_sensor: !input pass_sensor
+  lead_minutes: !input lead_minutes
+
+triggers:
+  - trigger: template
+    id: soon
+    value_template: >-
+      {% set t = states(pass_sensor) %}
+      {% if t in ['unknown', 'unavailable', 'none', ''] %}false{% else %}
+      {% set left = as_timestamp(t, 0) - as_timestamp(now()) %}
+      {{ 0 < left <= lead_minutes * 60 }}
+      {% endif %}
+  - trigger: template
+    id: start
+    value_template: >-
+      {% set t = states(pass_sensor) %}
+      {% if t in ['unknown', 'unavailable', 'none', ''] %}false{% else %}
+      {% set left = as_timestamp(t, 0) - as_timestamp(now()) %}
+      {{ -120 < left <= 0 }}
+      {% endif %}
+
+variables:
+  notify_device: !input notify_device
+  min_elevation: !input min_elevation
+  weather_entity: !input weather_entity
+  max_clouds: !input max_clouds
+  alert_at_start: !input alert_at_start
+  satellite: >-
+    {{ (state_attr(pass_sensor, 'friendly_name') or pass_sensor)
+       | replace('Orbitarium ', '')
+       | regex_replace(' (next visible pass|n\\w+chster sichtbarer \\w+)$', '') }}
+  max_elevation: "{{ state_attr(pass_sensor, 'max_elevation') | float(0) }}"
+  start_direction: "{{ state_attr(pass_sensor, 'start_direction') or '?' }}"
+  max_direction: "{{ state_attr(pass_sensor, 'max_direction') or '?' }}"
+  end_direction: "{{ state_attr(pass_sensor, 'end_direction') or '?' }}"
+  minutes_visible: "{{ ((state_attr(pass_sensor, 'duration_seconds') | int(0)) / 60) | round(0) | int }}"
+  minutes_left: "{{ ((as_timestamp(states(pass_sensor), 0) - as_timestamp(now())) / 60) | round(0) | int }}"
+  clouds: >-
+    {% if weather_entity %}{{ state_attr(weather_entity, 'cloud_coverage') }}{% else %}none{% endif %}
+  cloud_text: >-
+    {% if clouds not in ['none', 'None', None, ''] %} Clouds {{ clouds | float(0) | round(0) | int }} %.{% endif %}
+
+conditions:
+  - condition: template
+    value_template: "{{ max_elevation >= min_elevation }}"
+  - condition: template
+    value_template: >-
+      {{ not weather_entity or clouds in ['none', 'None', None, '']
+         or clouds | float(0) <= max_clouds }}
+  - condition: template
+    value_template: "{{ trigger.id == 'soon' or alert_at_start }}"
+
+actions:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: soon
+        sequence:
+          - domain: mobile_app
+            type: notify
+            device_id: !input notify_device
+            title: "{{ satellite }} in {{ minutes_left }} min"
+            message: >-
+              Visible from {{ start_direction }} to {{ end_direction }}, up to {{ max_elevation | round(0) | int }}°
+              in the {{ max_direction }}, about {{ minutes_visible }} min.{{ cloud_text }}
+      - conditions:
+          - condition: trigger
+            id: start
+        sequence:
+          - domain: mobile_app
+            type: notify
+            device_id: !input notify_device
+            title: "{{ satellite }} is rising now"
+            message: >-
+              Look {{ start_direction }}. Highest at {{ max_elevation | round(0) | int }}° in the {{ max_direction }}.
