@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "orbitarium"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 CONF_GROUPS = "groups"
 CONF_TRACKED = "tracked_satellites"
@@ -50,6 +50,21 @@ SKY_FILES = {
 # pinned to a release tag.
 LAND_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_110m_land.geojson"
 SKY_DATA_VERSION = 2
+
+# Earth imagery for the globe view, NASA Earth Observatory (free of licensing
+# fees, credit "NASA Earth Observatory"). Downloaded at runtime, not shipped.
+# Day side: Blue Marble Next Generation with topography and bathymetry, one
+# image per month of the year. Night side: Black Marble 2016 city lights.
+EARTH_DAY_URL = (
+    "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/"
+    "bmng-topography-bathymetry/{month_name}/world.topo.bathy.2004{month:02d}.3x5400x2700.jpg"
+)
+EARTH_DAY_FALLBACK_MONTH = 9
+EARTH_NIGHT_URL = (
+    "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/"
+    "144000/144898/BlackMarble_2016_01deg.jpg"
+)
+EARTH_DIR = "orbitarium"
 STAR_NAME_MAX_MAG = 2.6
 
 STORAGE_VERSION = 1
@@ -58,6 +73,7 @@ STORAGE_KEY_SKY = f"{DOMAIN}.sky"
 
 URL_CATALOG = "/api/orbitarium/catalog"
 URL_SKY = "/api/orbitarium/sky"
+URL_EARTH = "/api/orbitarium/earth/{kind}"
 URL_FRONTEND = "/orbitarium/frontend"
 CARD_FILE = "orbitarium-card.js"
 

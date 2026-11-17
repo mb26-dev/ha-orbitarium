@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import gzip
 import json
 import logging
+from pathlib import Path
 import time
 from typing import Any
 
@@ -16,11 +17,16 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CELESTRAK_CATNR_URL,
     CELESTRAK_GROUP_URL,
     D3C_BASE,
+    EARTH_DAY_FALLBACK_MONTH,
+    EARTH_DAY_URL,
+    EARTH_DIR,
+    EARTH_NIGHT_URL,
     LAND_URL,
     SATELLITE_GROUPS,
     SIGNAL_CATALOG_UPDATED,
@@ -40,6 +46,11 @@ _LOGGER = logging.getLogger(__name__)
 
 USER_AGENT = f"HomeAssistant-Orbitarium/{VERSION}"
 HTTP_TIMEOUT = aiohttp.ClientTimeout(total=90)
+IMAGE_TIMEOUT = aiohttp.ClientTimeout(total=180)
+MONTH_NAMES = [
+    "january", "february", "march", "april", "may", "june",
+    "july", "august", "september", "october", "november", "december",
+]
 
 
 def _epoch_to_jd(epoch: str) -> float:
@@ -191,6 +202,11 @@ class OrbitariumData:
         self.sky_gzip: bytes | None = None
         self.catalog_updated: float = 0.0
         self._lock = asyncio.Lock()
+        self.earth_dir = Path(hass.config.path(".storage", EARTH_DIR))
+        self._earth_lock = asyncio.Lock()
+        self._earth_retry: float = 0.0
+        self.earth_day_file: Path | None = None
+        self.earth_night_file: Path | None = None
 
     # ------------------------------------------------------------------ load
 
@@ -308,6 +324,97 @@ class OrbitariumData:
             len(sky["lines"]),
             len(sky["land"]),
         )
+
+    # ----------------------------------------------------------- earth imagery
+
+    def _scan_earth(self) -> None:
+        """Look up the downloaded Earth images (runs in the executor)."""
+        night = self.earth_dir / "earth_night.jpg"
+        self.earth_night_file = night if night.is_file() else None
+        current = self.earth_dir / f"earth_day_{dt_util.now().month:02d}.jpg"
+        if current.is_file():
+            self.earth_day_file = current
+        else:
+            files = sorted(self.earth_dir.glob("earth_day_*.jpg")) if self.earth_dir.is_dir() else []
+            self.earth_day_file = files[-1] if files else None
+
+    def earth_path(self, kind: str) -> Path | None:
+        """Path of a downloaded Earth image ("day" or "night")."""
+        if kind == "day":
+            return self.earth_day_file
+        if kind == "night":
+            return self.earth_night_file
+        return None
+
+    def earth_status(self) -> str:
+        day = self.earth_path("day")
+        night = self.earth_path("night")
+        if day and night:
+            return f"ready ({day.stem[-2:]})"
+        if day or night:
+            return "partial"
+        return "missing"
+
+    async def async_ensure_earth(self) -> None:
+        """Download the NASA day and night images once (day image per month)."""
+        if time.time() < self._earth_retry or self._earth_lock.locked():
+            return
+        async with self._earth_lock:
+            await self.hass.async_add_executor_job(self._scan_earth)
+            month = dt_util.now().month
+            day_file = self.earth_dir / f"earth_day_{month:02d}.jpg"
+            night_file = self.earth_dir / "earth_night.jpg"
+            have_day = await self.hass.async_add_executor_job(day_file.is_file)
+            have_night = await self.hass.async_add_executor_job(night_file.is_file)
+            if have_day and have_night:
+                return
+            await self.hass.async_add_executor_job(lambda: self.earth_dir.mkdir(parents=True, exist_ok=True))
+            session = async_get_clientsession(self.hass)
+            ok = True
+            if not have_day:
+                image = None
+                for m in (month, EARTH_DAY_FALLBACK_MONTH):
+                    url = EARTH_DAY_URL.format(month_name=MONTH_NAMES[m - 1], month=m)
+                    image = await self._fetch_image(session, url)
+                    if image:
+                        break
+                if image:
+                    await self.hass.async_add_executor_job(self._store_day_image, day_file, image)
+                    _LOGGER.info("Earth day image for month %s ready (%s kB)", month, len(image) // 1024)
+                else:
+                    ok = False
+            if not have_night:
+                image = await self._fetch_image(session, EARTH_NIGHT_URL)
+                if image:
+                    await self.hass.async_add_executor_job(night_file.write_bytes, image)
+                    _LOGGER.info("Earth night image ready (%s kB)", len(image) // 1024)
+                else:
+                    ok = False
+            await self.hass.async_add_executor_job(self._scan_earth)
+            if not ok:
+                # NASA servers are sometimes slow; try again in a few hours
+                self._earth_retry = time.time() + 6 * 3600
+
+    def _store_day_image(self, path: Path, image: bytes) -> None:
+        path.write_bytes(image)
+        for old in self.earth_dir.glob("earth_day_*.jpg"):
+            if old != path:
+                old.unlink(missing_ok=True)
+
+    async def _fetch_image(self, session: aiohttp.ClientSession, url: str) -> bytes | None:
+        try:
+            async with session.get(url, timeout=IMAGE_TIMEOUT, headers={"User-Agent": USER_AGENT}) as resp:
+                if resp.status != 200:
+                    _LOGGER.debug("Earth image %s returned HTTP %s", url, resp.status)
+                    return None
+                body = await resp.read()
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            _LOGGER.warning("Could not download Earth image %s: %s", url, err)
+            return None
+        if len(body) < 50_000 or not body.startswith(b"\xff\xd8"):
+            _LOGGER.warning("Earth image %s is not a JPEG, ignoring it", url)
+            return None
+        return body
 
     # ---------------------------------------------------------------- building
 
