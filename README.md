@@ -112,7 +112,7 @@ All settings are done in the UI and can be changed later under **Configure**:
 
 | Option | Default | Description |
 | --- | --- | --- |
-| Satellite groups | Space stations, Brightest, Starlink | CelesTrak groups to load. Starlink alone has more than 11,000 satellites. |
+| Satellite groups | Space stations, Brightest, Starlink | CelesTrak groups to load. Starlink alone has more than 11,000 satellites. Space stations also brings a separate **Station traffic** group: docked and visiting spacecraft and small satellites released from the ISS. |
 | Pass predictions for | `25544, 48274` | NORAD ids that get a "next visible pass" sensor and a "visible now" binary sensor |
 | Minimum pass elevation | 10° | Lower passes are ignored |
 

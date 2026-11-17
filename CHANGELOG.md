@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1
+
+### Changed
+
+- **Space stations means space stations:** the CelesTrak stations list also contains docked and visiting spacecraft (Soyuz, Progress, Dragon, Shenzhou, Tianzhou) and small satellites released from the ISS. These now have their own group **Station traffic** with its own chip, so *Space stations* only shows the ISS and Tiangong with their modules. Nothing is downloaded twice; the group is split locally.
+
 ## 1.3.0
 
 ### Added
