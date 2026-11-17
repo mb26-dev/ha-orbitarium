@@ -19,6 +19,28 @@ A live planetarium for Home Assistant. Orbitarium shows **every Starlink and tho
 
 Everything is calculated locally in Home Assistant and in your browser. No API key, no account, no cloud service besides the public orbital data from CelesTrak.
 
+<p align="center">
+  <img src="docs/images/dome.png" alt="Orbitarium dome view: the whole night sky with constellations, planets, the Moon and Starlink satellites" width="100%">
+</p>
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/images/globe-timelapse.gif" alt="Globe view time lapse: the Earth with NASA imagery and thousands of satellites in orbit" width="80%">
+  <br><em>Globe view at 600x speed: day and night side from NASA imagery, every satellite in orbit around your home</em>
+</p>
+
+| | |
+| --- | --- |
+| <img src="docs/images/horizon.png" alt="Horizon view at dusk"> | <img src="docs/images/globe-night.jpg" alt="Globe at night with city lights"> |
+| **Horizon view** at dusk: twilight glow, sunlit Starlink satellites | **Globe at night:** city lights from NASA Black Marble |
+| <img src="docs/images/planet-card.png" alt="Saturn info card"> | <img src="docs/images/night-switch.png" alt="Night sky switch in daylight with the ISS selected"> |
+| **Planet cards:** position, distance, rise and set times, key facts | **Night sky switch:** dark sky in daylight, ISS selected with its orbit track |
+| <img src="docs/images/globe-day.jpg" alt="Globe with the day and night terminator"> | <img src="docs/images/phone.png" alt="Phone view" width="49%"> <img src="docs/images/phone-moon.png" alt="Moon card on a phone" width="49%"> |
+| **Globe by day** with the terminator over Asia | **On a phone:** full sky and the Moon card with its current phase |
+
+All screenshots use real orbital data from CelesTrak, seen from Ao Nang, Thailand.
+
 ## Features
 
 **Lovelace card** `custom:orbitarium-card` (installed and registered automatically)
@@ -66,7 +88,7 @@ All settings are done in the UI and can be changed later under **Configure**:
 
 | Option | Default | Description |
 | --- | --- | --- |
-| Satellite groups | Space stations, Brightest, Starlink | CelesTrak groups to load. Starlink alone has close to 10,000 satellites. |
+| Satellite groups | Space stations, Brightest, Starlink | CelesTrak groups to load. Starlink alone has more than 11,000 satellites. |
 | Pass predictions for | `25544, 48274` | NORAD ids that get a "next visible pass" sensor |
 | Minimum pass elevation | 10° | Lower passes are ignored |
 
@@ -103,6 +125,29 @@ groups:                 # groups shown when the card opens (default: all loaded 
 latitude: 8.03          # optional override of the home location
 longitude: 98.82
 ```
+
+## Performance tips
+
+Orbitarium draws every satellite of the selected groups in every frame. Starlink alone is more than 11,000 objects, so slow devices need a little help:
+
+| Device | Recommendation |
+| --- | --- |
+| Desktop browser, recent phone or tablet | Defaults are fine (`fps: 30`, icons on) |
+| Older tablet, Fire tablet, wall panel | `fps: 15`, show only the groups you care about |
+| Very weak hardware | `fps: 10`, `satellite_icons: false` (small dots), Starlink group switched off |
+
+```yaml
+type: custom:orbitarium-card
+fps: 15
+satellite_icons: false
+groups:
+  - stations
+  - visual
+```
+
+- The card pauses itself when it is not on screen or the browser tab is hidden, so a dashboard in the background costs nothing.
+- Fewer groups in the integration options also means a smaller download for every browser that opens the card.
+- With more than 1,800 satellites on screen the card switches from icons to dots automatically.
 
 ## Automation example
 
