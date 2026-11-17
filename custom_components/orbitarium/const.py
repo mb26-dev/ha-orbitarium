@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "orbitarium"
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 
 CONF_GROUPS = "groups"
 CONF_TRACKED = "tracked_satellites"

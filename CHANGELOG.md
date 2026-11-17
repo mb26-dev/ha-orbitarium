@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0
+
+### Added
+
+- Satellite icons: original vector artwork for flat-panel broadband satellites (Starlink, OneWeb, Kuiper), the large stations (ISS, Tiangong) and all other satellites, turned along their direction of flight.
+- Icons grow when you zoom in, carry a soft aura in their group colour and glow brighter when they are visible to the naked eye.
+- Satellite picture in the info panel.
+- Card option `satellite_icons` (default `true`), set it to `false` for the classic dots.
+
 ## 1.0.1
 
 ### Fixed

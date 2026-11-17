@@ -27,6 +27,7 @@ Everything is calculated locally in Home Assistant and in your browser. No API k
 - Stars down to magnitude 6 with real colours, constellation lines and names, bright star names
 - Sun, Moon with its current phase, Mercury to Neptune
 - All satellites of the selected groups, moving in real time (SGP4 propagation, 30 fps by default)
+- Satellite icons turned along their direction of flight: flat-panel Starlink style, ISS / Tiangong and a classic satellite for all others
 - Satellites that are **visible to the naked eye** (sunlit while your sky is dark) glow in their group colour, satellites in Earth's shadow are dimmed
 - Tap a satellite for name, NORAD id, elevation, azimuth, range, altitude, speed and status, plus its orbit track
 - Group filter with counts, "visible only" mode, labels on/off
@@ -92,6 +93,7 @@ show_labels: true
 show_planets: true
 show_ground: true       # false shows objects below the horizon too
 visible_only: false     # only satellites that are visible to the naked eye
+satellite_icons: true   # false draws small dots instead of icons
 groups:                 # groups shown when the card opens (default: all loaded groups)
   - stations
   - starlink
