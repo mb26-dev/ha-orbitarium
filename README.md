@@ -176,6 +176,23 @@ groups:
 - Fewer groups in the integration options also means a smaller download for every browser that opens the card.
 - With more than 1,800 satellites on screen the card switches from icons to dots automatically.
 
+## Pass alerts (blueprint)
+
+The easiest way to never miss the ISS: import the blueprint, pick the satellite and your phone, done.
+
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fmb26-dev%2Fha-orbitarium%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Forbitarium%2Fvisible_pass_alert.yaml)
+
+| Setting | Default |
+| --- | --- |
+| Satellite | any *next visible pass* sensor |
+| Phone | any device with the Companion app |
+| Minutes before the pass | 10 |
+| Minimum height of the pass | 30° |
+| Weather entity and maximum cloud coverage | optional, 50 % |
+| Second alert when it rises | on |
+
+Orbitarium only counts passes while your sky is dark and the satellite is sunlit, so the alerts only come at dusk, at night and at dawn. Example: *"ISS in 10 min: visible from SW to NE, up to 64° in the SE, about 4 min. Clouds 20 %."*
+
 ## Automation example
 
 Turn on the garden lights while the ISS is visible:
