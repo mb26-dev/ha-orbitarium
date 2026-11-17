@@ -1,9 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="custom_components/orbitarium/brand/dark_logo@2x.png">
-    <source media="(prefers-color-scheme: light)" srcset="custom_components/orbitarium/brand/logo@2x.png">
-    <img src="custom_components/orbitarium/brand/dark_logo@2x.png" alt="Orbitarium" width="420">
-  </picture>
+  <img src="custom_components/orbitarium/brand/logo@2x.png" alt="Orbitarium" width="100%">
 </p>
 
 <p align="center">

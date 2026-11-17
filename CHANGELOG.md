@@ -1,9 +1,10 @@
 # Changelog
 
-## 1.5.0 (in testing)
+## 1.5.0
 
 ### Added
 
+- **New logo and icon** in Home Assistant, HACS and the README.
 - **Recent launches:** new satellite group with everything launched in the last 30 days (CelesTrak `last-30-days`), in its own mint colour. Fresh Starlink batches show up here within about a day of a Falcon 9 launch. Off by default.
 - **Visible pass alert blueprint:** pick a tracked satellite and your phone and get a notification a few minutes before a naked-eye pass, only for passes high enough and, if you like, only when the sky is clear enough (cloud coverage from any weather entity). A second short alert tells you where to look when it rises. Import it with one click from the README.
 - **Satellite train visible** binary sensor (with Recent launches on): on while at least 5 recently launched satellites are visible to the naked eye close together on the sky, the famous "string of pearls" after a Starlink launch. Attributes with count, direction, elevation and names. Updates every 10 seconds while a train is up.
