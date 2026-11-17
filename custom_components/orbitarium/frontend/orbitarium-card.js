@@ -32,7 +32,7 @@ import {
 } from "./orbitarium-art.js?v=1.2.0";
 import { loadEarth, renderEarth } from "./orbitarium-earth.js?v=1.2.0";
 
-const CARD_VERSION = "1.2.0";
+const CARD_VERSION = "1.4.0";
 const GOLD = "#d4af37";
 const WARP_STEPS = [-600, -120, -30, -5, 0, 1, 5, 30, 120, 600];
 const CARDINALS = [
@@ -607,6 +607,9 @@ class OrbitariumCard extends HTMLElement {
       this._hidden = new Set(cat.groups.map((g, i) => (this._groupFilter.has(g.key) ? -1 : i)).filter((i) => i >= 0));
     }
     this._groupRgb = cat.groups.map((g) => hexToRgb(g.color));
+    // debris and rocket bodies: always small dots; debris never counts as visible
+    this._groupDots = cat.groups.map((g) => g.dots === true);
+    this._groupNoEye = cat.groups.map((g) => g.visible === false);
     this._groupStyles = cat.groups.map((g) => {
       const [r, gg, b] = hexToRgb(g.color);
       return {
@@ -1581,7 +1584,7 @@ class OrbitariumCard extends HTMLElement {
       const g = cat.group[i];
       const lit = isSunlit(r, sunDir);
       // naked-eye visibility: sunlit, dark sky and not too far away (GEO/GNSS are far too faint)
-      const eyeVisible = lit && dark && rr < 6371 + 2000;
+      const eyeVisible = lit && dark && rr < 6371 + 2000 && !this._groupNoEye[g];
       if (up > 0) {
         above++;
         if (eyeVisible) visible++;
@@ -1620,7 +1623,7 @@ class OrbitariumCard extends HTMLElement {
     // icons need a few hundred drawImage calls; fall back to dots when the
     // whole catalogue is on screen (ground hidden) to keep the frame budget
     let onScreen = 0;
-    for (let b = 0; b < groups * 3; b++) onScreen += buckets[b].length;
+    for (let b = 0; b < groups * 3; b++) if (!this._groupDots[Math.floor(b / 3)]) onScreen += buckets[b].length;
     const drawIcons = icons && onScreen <= 1800;
     if (drawIcons) this._drawSatIcons(ctx, buckets, groups);
 
@@ -1631,7 +1634,8 @@ class OrbitariumCard extends HTMLElement {
         if (!list.length) continue;
         const style = this._groupStyles[g];
         ctx.fillStyle = state === 0 ? style.vis : state === 1 ? style.lit : style.dim;
-        if (!drawIcons) {
+        const dots = !drawIcons || this._groupDots[g];
+        if (dots) {
           const s = (state === 0 ? 2.8 : state === 1 ? 2.2 : 1.6) * (G ? 0.7 : 1);
           const h = s / 2;
           for (let k = 0; k < list.length; k++) {
@@ -1639,7 +1643,7 @@ class OrbitariumCard extends HTMLElement {
             ctx.fillRect(sx[i] - h, sy[i] - h, s, s);
           }
         }
-        if (state === 0 && !drawIcons) {
+        if (state === 0 && dots) {
           // soft glow for naked-eye visible satellites
           ctx.save();
           ctx.globalAlpha = 0.18;
@@ -1734,7 +1738,7 @@ class OrbitariumCard extends HTMLElement {
       ctx.globalAlpha = state === 2 ? 0.38 : state === 1 ? 0.88 : 1;
       for (let g = 0; g < groups; g++) {
         const list = buckets[g * 3 + state];
-        if (!list.length) continue;
+        if (!list.length || this._groupDots[g]) continue;
         const color = cat.groups[g].color;
         for (let k = 0; k < list.length; k++) {
           const i = list[k];
@@ -2169,12 +2173,14 @@ class OrbitariumCard extends HTMLElement {
       const lit = isSunlit([t[0], t[1], t[2]], sun.dir);
       const sunEnu = this._toEnu(obs, sun.dir);
       const darkSky = sunEnu[2] < Math.sin(-6 * DEG);
-      let status = lit ? (darkSky ? (height < 2000 ? "Visible (sunlit, dark sky)" : "Sunlit (too far for the eye)") : "Sunlit (daylight sky)") : "In Earth's shadow";
-      if (alt < 0) status = "Below the horizon";
       const group = cat.groups[cat.group[i]];
+      const noEye = !!group && group.visible === false;
+      let status = lit ? (darkSky ? (noEye ? "Sunlit (too small for the eye)" : height < 2000 ? "Visible (sunlit, dark sky)" : "Sunlit (too far for the eye)") : "Sunlit (daylight sky)") : "In Earth's shadow";
+      if (alt < 0) status = "Below the horizon";
       const ageDays = jd - rec.epochJd;
       title = cat.names[i];
-      picture = satPicture(this._kind[i], group ? group.color : GOLD);
+      // no satellite drawing for debris and rocket bodies
+      picture = group && group.dots ? "" : satPicture(this._kind[i], group ? group.color : GOLD);
       rows.push(["NORAD", String(cat.norad[i])]);
       rows.push(["Group", group ? group.name : "-"]);
       rows.push(["Elevation", `${alt.toFixed(1)}°`]);
