@@ -31,6 +31,11 @@ Everything is calculated locally in Home Assistant and in your browser. No API k
   <br><em>Globe view at 600x speed: day and night side from NASA imagery, every satellite in orbit around your home</em>
 </p>
 
+<p align="center">
+  <img src="docs/images/globe-debris.jpg" alt="Globe view with more than 10,000 pieces of space debris around the Earth and the info card of a Long March 6A debris fragment" width="100%">
+  <br><em>Debris switched on: more than 10,000 tracked fragments around the Earth, here a piece of a Long March 6A upper stage</em>
+</p>
+
 | | |
 | --- | --- |
 | <img src="docs/images/horizon.png" alt="Horizon view at dusk"> | <img src="docs/images/globe-night.jpg" alt="Globe at night with city lights"> |
