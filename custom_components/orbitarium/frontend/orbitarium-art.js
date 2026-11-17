@@ -13,9 +13,11 @@ export const KIND_GENERIC = 0;
 export const KIND_FLAT = 1; // flat-panel broadband satellites: Starlink, OneWeb, Kuiper
 export const KIND_STATION = 2; // International Space Station
 export const KIND_TIANGONG = 3; // Chinese space station (T-shaped)
+export const KIND_ROCKET = 4; // spent upper stage (rocket body)
+export const KIND_DEBRIS = 5; // fragment of a broken up satellite or stage
 
 // aspect ratio (height / length) of each drawing
-export const KIND_ASPECT = [0.5, 0.42, 0.78, 0.74];
+export const KIND_ASPECT = [0.5, 0.42, 0.78, 0.74, 0.34, 0.72];
 
 export function isStationKind(kind) {
   return kind === KIND_STATION || kind === KIND_TIANGONG;
@@ -25,6 +27,8 @@ export function satKind(groupKey, name) {
   const n = (name || "").toUpperCase();
   if (/^ISS \(ZARYA\)|^ISS$/.test(n)) return KIND_STATION;
   if (/TIANHE|^CSS/.test(n)) return KIND_TIANGONG;
+  if (groupKey === "rocket-bodies" || /\bR\/B\b/.test(n)) return KIND_ROCKET;
+  if (groupKey === "debris" || /\bDEB\b/.test(n)) return KIND_DEBRIS;
   if (groupKey === "starlink" || groupKey === "oneweb" || groupKey === "kuiper") return KIND_FLAT;
   if (/^STARLINK|^ONEWEB|^KUIPER/.test(n)) return KIND_FLAT;
   return KIND_GENERIC;
@@ -177,6 +181,72 @@ function drawSatArt(ctx, kind, L) {
     ctx.fillStyle = "#e9edf2";
     ctx.beginPath();
     ctx.arc(-L * 0.07, 0, cw * 0.75, 0, TWO_PI);
+    ctx.fill();
+    ctx.stroke();
+    return;
+  }
+  if (kind === KIND_ROCKET) {
+    // spent upper stage: long cylinder with an interstage band and an engine bell
+    const r = L * 0.13;
+    const x0 = -L * 0.36;
+    const x1 = L * 0.44;
+    // engine bell at the back
+    ctx.fillStyle = metalFill(ctx, 0, -r, 0, r, "#7a7f86", "#2f3237");
+    ctx.beginPath();
+    ctx.moveTo(x0, -r * 0.55);
+    ctx.lineTo(-L * 0.5, -r * 1.05);
+    ctx.lineTo(-L * 0.5, r * 1.05);
+    ctx.lineTo(x0, r * 0.55);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#24272b";
+    ctx.lineWidth = Math.max(0.5, L * 0.012);
+    ctx.stroke();
+    // tank body
+    ctx.fillStyle = metalFill(ctx, 0, -r, 0, r, "#f6f7f9", "#8c929b");
+    ctx.beginPath();
+    roundRect(ctx, x0, -r, x1 - x0, r * 2, [r * 0.25, r * 0.9, r * 0.9, r * 0.25]);
+    ctx.fill();
+    ctx.strokeStyle = "#5d646e";
+    ctx.lineWidth = Math.max(0.5, L * 0.012);
+    ctx.stroke();
+    // interstage band and a darker ring near the engine
+    ctx.fillStyle = metalFill(ctx, 0, -r, 0, r, "#e2b77e", "#8a5f2c");
+    ctx.fillRect(L * 0.04, -r, L * 0.09, r * 2);
+    ctx.fillStyle = "rgba(40,44,50,0.55)";
+    ctx.fillRect(x0 + L * 0.05, -r, L * 0.035, r * 2);
+    return;
+  }
+  if (kind === KIND_DEBRIS) {
+    // torn metal shard with a scrap of foil and two small chips beside it
+    const P = (pts) => {
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => (i ? ctx.lineTo(x * L, y * L) : ctx.moveTo(x * L, y * L)));
+      ctx.closePath();
+    };
+    ctx.lineWidth = Math.max(0.5, L * 0.016);
+    ctx.strokeStyle = "#3a3e44";
+    ctx.fillStyle = metalFill(ctx, -L * 0.4, -L * 0.3, L * 0.4, L * 0.3, "#d9dce1", "#5b6068");
+    P([[-0.42, -0.06], [-0.12, -0.3], [0.16, -0.2], [0.4, 0.04], [0.14, 0.27], [-0.06, 0.12], [-0.26, 0.2]]);
+    ctx.fill();
+    ctx.stroke();
+    // crease
+    ctx.strokeStyle = "rgba(255,255,255,0.55)";
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.24, -L * 0.08);
+    ctx.lineTo(L * 0.18, L * 0.04);
+    ctx.stroke();
+    // scrap of gold foil
+    ctx.fillStyle = metalFill(ctx, 0, -L * 0.2, 0, 0, "#f1cf73", "#8f6b1c");
+    P([[0.02, -0.18], [0.2, -0.14], [0.12, -0.02], [-0.04, -0.06]]);
+    ctx.fill();
+    // chips
+    ctx.fillStyle = "#9aa0a8";
+    ctx.strokeStyle = "#3a3e44";
+    P([[0.36, -0.3], [0.47, -0.24], [0.38, -0.17]]);
+    ctx.fill();
+    ctx.stroke();
+    P([[-0.47, 0.22], [-0.36, 0.3], [-0.44, 0.35]]);
     ctx.fill();
     ctx.stroke();
     return;

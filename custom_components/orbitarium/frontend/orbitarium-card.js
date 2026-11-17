@@ -19,9 +19,11 @@ import {
   planetPositions,
   isSunlit,
   bvToColor,
-} from "./orbitarium-core.js?v=1.2.0";
+} from "./orbitarium-core.js?v=1.5.0b1";
 import {
+  KIND_DEBRIS,
   KIND_FLAT,
+  KIND_ROCKET,
   isStationKind,
   satKind,
   satSprite,
@@ -29,10 +31,10 @@ import {
   BODY_FACTS,
   bodyPicture,
   moonPhaseName,
-} from "./orbitarium-art.js?v=1.2.0";
-import { loadEarth, renderEarth } from "./orbitarium-earth.js?v=1.2.0";
+} from "./orbitarium-art.js?v=1.5.0b1";
+import { loadEarth, renderEarth } from "./orbitarium-earth.js?v=1.5.0b1";
 
-const CARD_VERSION = "1.4.0";
+const CARD_VERSION = "1.5.0b1";
 const GOLD = "#d4af37";
 const WARP_STEPS = [-600, -120, -30, -5, 0, 1, 5, 30, 120, 600];
 const CARDINALS = [
@@ -1622,10 +1624,17 @@ class OrbitariumCard extends HTMLElement {
 
     // icons need a few hundred drawImage calls; fall back to dots when the
     // whole catalogue is on screen (ground hidden) to keep the frame budget
+    // rocket bodies and debris have their own, smaller budget so that turning
+    // them on never costs the satellites their icons
     let onScreen = 0;
-    for (let b = 0; b < groups * 3; b++) if (!this._groupDots[Math.floor(b / 3)]) onScreen += buckets[b].length;
+    let onScreenSmall = 0;
+    for (let b = 0; b < groups * 3; b++) {
+      if (this._groupDots[Math.floor(b / 3)]) onScreenSmall += buckets[b].length;
+      else onScreen += buckets[b].length;
+    }
     const drawIcons = icons && onScreen <= 1800;
-    if (drawIcons) this._drawSatIcons(ctx, buckets, groups);
+    const drawSmallIcons = drawIcons && onScreenSmall <= 700;
+    if (drawIcons) this._drawSatIcons(ctx, buckets, groups, drawSmallIcons);
 
     // draw: shadow first, then sunlit, then visible
     for (const state of [2, 1, 0]) {
@@ -1634,7 +1643,7 @@ class OrbitariumCard extends HTMLElement {
         if (!list.length) continue;
         const style = this._groupStyles[g];
         ctx.fillStyle = state === 0 ? style.vis : state === 1 ? style.lit : style.dim;
-        const dots = !drawIcons || this._groupDots[g];
+        const dots = !drawIcons || (this._groupDots[g] && !drawSmallIcons);
         if (dots) {
           const s = (state === 0 ? 2.8 : state === 1 ? 2.2 : 1.6) * (G ? 0.7 : 1);
           const h = s / 2;
@@ -1719,26 +1728,27 @@ class OrbitariumCard extends HTMLElement {
     const zoom = this._view.mode === "globe" ? 0.85 * Math.pow(this._view.gz, 0.7) : Math.pow(120 / this._view.fov, 0.85);
     const small = Math.min(this._w, this._h) < 520 ? 0.85 : 1;
     const station = isStationKind(kind);
-    let base = station ? 26 : kind === KIND_FLAT ? 11 : 12;
+    const tiny = kind === KIND_DEBRIS;
+    let base = station ? 26 : kind === KIND_FLAT ? 11 : kind === KIND_ROCKET ? 11 : tiny ? 7 : 12;
     if (tracked) base *= 1.15;
-    const max = station ? 110 : 64;
-    return Math.round(clamp(base * zoom * small, station ? 18 : 7, max));
+    const max = station ? 110 : tiny ? 40 : 64;
+    return Math.round(clamp(base * zoom * small, station ? 18 : tiny ? 5 : 7, max));
   }
 
-  _drawSatIcons(ctx, buckets, groups) {
+  _drawSatIcons(ctx, buckets, groups, smallIcons) {
     const cat = this._cat;
     const sx = this._sx;
     const sy = this._sy;
     const sa = this._sa;
     const kinds = this._kind;
     const dpr = this._dpr;
-    const lens = [this._iconLength(0, false), this._iconLength(1, false), this._iconLength(2, true), this._iconLength(3, true)];
+    const lens = [0, 1, 2, 3, 4, 5].map((k) => this._iconLength(k, isStationKind(k)));
     const visLens = lens.map((l) => Math.round(l * 1.2));
     for (const state of [2, 1, 0]) {
       ctx.globalAlpha = state === 2 ? 0.38 : state === 1 ? 0.88 : 1;
       for (let g = 0; g < groups; g++) {
         const list = buckets[g * 3 + state];
-        if (!list.length || this._groupDots[g]) continue;
+        if (!list.length || (this._groupDots[g] && !smallIcons)) continue;
         const color = cat.groups[g].color;
         for (let k = 0; k < list.length; k++) {
           const i = list[k];
@@ -2179,8 +2189,7 @@ class OrbitariumCard extends HTMLElement {
       if (alt < 0) status = "Below the horizon";
       const ageDays = jd - rec.epochJd;
       title = cat.names[i];
-      // no satellite drawing for debris and rocket bodies
-      picture = group && group.dots ? "" : satPicture(this._kind[i], group ? group.color : GOLD);
+      picture = satPicture(this._kind[i], group ? group.color : GOLD);
       rows.push(["NORAD", String(cat.norad[i])]);
       rows.push(["Group", group ? group.name : "-"]);
       rows.push(["Elevation", `${alt.toFixed(1)}°`]);
