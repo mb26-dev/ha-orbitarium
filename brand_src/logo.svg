@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 256" width="720" height="256">
+  <g transform="translate(8 8) scale(0.9375)">
+  <defs>
+    <radialGradient id="lsky" cx="50%" cy="45%" r="60%">
+      <stop offset="0" stop-color="#16244a"/><stop offset="1" stop-color="#05070f"/>
+    </radialGradient>
+    <linearGradient id="lgold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f3d77a"/><stop offset="1" stop-color="#b8892a"/>
+    </linearGradient>
+  </defs>
+  <circle cx="128" cy="128" r="118" fill="url(#lsky)" stroke="url(#lgold)" stroke-width="8"/>
+  <g fill="#ffffff">
+    <circle cx="70" cy="80" r="2.6"/><circle cx="96" cy="58" r="1.8"/><circle cx="168" cy="70" r="2.2"/>
+    <circle cx="190" cy="108" r="1.6"/><circle cx="60" cy="150" r="1.8"/><circle cx="182" cy="170" r="2.4"/>
+    <circle cx="120" cy="190" r="1.5"/><circle cx="148" cy="44" r="1.6"/>
+  </g>
+  <path d="M70 80 L96 58 L148 44 L168 70" fill="none" stroke="#7aa0e0" stroke-width="1.6" opacity="0.7"/>
+  <ellipse cx="128" cy="132" rx="96" ry="34" fill="none" stroke="url(#lgold)" stroke-width="5" transform="rotate(-24 128 132)"/>
+  <g transform="translate(128 132) rotate(-24)">
+    <g transform="translate(-60 -26) rotate(24)">
+      <rect x="-7" y="-7" width="14" height="14" rx="2" fill="url(#lgold)"/>
+      <rect x="-30" y="-5" width="18" height="10" fill="#7fdcff"/>
+      <rect x="12" y="-5" width="18" height="10" fill="#7fdcff"/>
+      <rect x="-12" y="-1.5" width="5" height="3" fill="url(#lgold)"/><rect x="7" y="-1.5" width="5" height="3" fill="url(#lgold)"/>
+    </g>
+  </g>
+  <circle cx="186" cy="150" r="5" fill="#7fdcff"/><circle cx="200" cy="140" r="4" fill="#7fdcff" opacity="0.8"/><circle cx="212" cy="131" r="3" fill="#7fdcff" opacity="0.6"/>
+</g>
+  <text x="272" y="153" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="70" font-weight="700" fill="#0b0f17">Orbit<tspan fill="#c99a2e">arium</tspan></text>
+</svg>

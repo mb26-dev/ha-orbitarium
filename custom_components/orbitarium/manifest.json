@@ -1,0 +1,14 @@
+{
+  "domain": "orbitarium",
+  "name": "Orbitarium",
+  "codeowners": ["@mb26-dev"],
+  "config_flow": true,
+  "dependencies": ["frontend", "http"],
+  "documentation": "https://github.com/mb26-dev/ha-orbitarium",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/mb26-dev/ha-orbitarium/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "1.0.0"
+}

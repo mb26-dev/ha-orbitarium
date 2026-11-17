@@ -1,0 +1,31 @@
+name: Build brand images
+
+on:
+  push:
+    paths:
+      - "brand_src/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    name: Render PNG brand images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install renderer
+        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin fonts-dejavu-core
+      - name: Render
+        run: |
+          mkdir -p custom_components/orbitarium/brand
+          rsvg-convert -w 256 -h 256 brand_src/icon.svg -o custom_components/orbitarium/brand/icon.png
+          rsvg-convert -h 256 brand_src/logo.svg -o custom_components/orbitarium/brand/logo.png
+          rsvg-convert -h 256 brand_src/dark_logo.svg -o custom_components/orbitarium/brand/dark_logo.png
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add custom_components/orbitarium/brand
+          git diff --cached --quiet || (git commit -m "Render brand images" && git push)
