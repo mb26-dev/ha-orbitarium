@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1
+
+### Fixed
+
+- Card fills the whole screen when it is the only card of a panel view (unless `height` is set).
+- Planet, Sun and Moon labels no longer overlap each other or neighbouring bodies.
+- Tracked satellites (ISS, Tiangong by default) now stay in the **Tracked** group with their gold marker, even when another selected group lists them too. The Tracked chip count is correct again.
+
 ## 1.0.0
 
 ### Added
