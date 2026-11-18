@@ -19,7 +19,7 @@ import {
   planetPositions,
   isSunlit,
   bvToColor,
-} from "./orbitarium-core.js?v=1.5.0";
+} from "./orbitarium-core.js?v=1.5.1";
 import {
   KIND_DEBRIS,
   KIND_FLAT,
@@ -31,10 +31,10 @@ import {
   BODY_FACTS,
   bodyPicture,
   moonPhaseName,
-} from "./orbitarium-art.js?v=1.5.0";
-import { loadEarth, renderEarth } from "./orbitarium-earth.js?v=1.5.0";
+} from "./orbitarium-art.js?v=1.5.1";
+import { loadEarth, renderEarth } from "./orbitarium-earth.js?v=1.5.1";
 
-const CARD_VERSION = "1.5.0";
+const CARD_VERSION = "1.5.1";
 const GOLD = "#d4af37";
 const WARP_STEPS = [-600, -120, -30, -5, 0, 1, 5, 30, 120, 600];
 const CARDINALS = [
@@ -426,7 +426,8 @@ class OrbitariumCard extends HTMLElement {
       </style>
       <ha-card>
         <div class="wrap">
-          <canvas></canvas>
+          <!-- id "slider": hass-swipe-navigation leaves gestures on #slider alone, so dragging the sky does not switch views -->
+          <canvas id="slider"></canvas>
           <div class="hud top">
             <div>
               <div class="title"></div>
