@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.1
+
+### Fixed
+
+- On dashboards with hass-swipe-navigation, dragging the sky map or the globe with a finger switched to another view instead of turning it.
+
 ## 1.5.0
 
 ### Added
