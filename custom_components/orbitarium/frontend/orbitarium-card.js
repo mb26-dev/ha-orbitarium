@@ -19,7 +19,7 @@ import {
   planetPositions,
   isSunlit,
   bvToColor,
-} from "./orbitarium-core.js?v=1.6.0b1";
+} from "./orbitarium-core.js?v=1.6.0b2";
 import {
   KIND_DEBRIS,
   KIND_FLAT,
@@ -31,10 +31,10 @@ import {
   BODY_FACTS,
   bodyPicture,
   moonPhaseName,
-} from "./orbitarium-art.js?v=1.6.0b1";
-import { loadEarth, renderEarth } from "./orbitarium-earth.js?v=1.6.0b1";
+} from "./orbitarium-art.js?v=1.6.0b2";
+import { loadEarth, renderEarth } from "./orbitarium-earth.js?v=1.6.0b2";
 
-const CARD_VERSION = "1.6.0b1";
+const CARD_VERSION = "1.6.0b2";
 const GOLD = "#d4af37";
 const WARP_STEPS = [-600, -120, -30, -5, 0, 1, 5, 30, 120, 600];
 const CARDINALS = [
@@ -246,6 +246,17 @@ const ECO_STAR_LIMIT = 5.0;
 const ECO_EARTH_SIZE = 480;
 const ECO_TEX_W = 1024;
 
+// pass paths: show the next naked-eye pass of tracked satellites this far ahead
+const PASS_LOOKAHEAD_MS = 12 * 3600 * 1000;
+const PASS_COLOR = "255,214,120";
+
+// screensaver: seconds per scene and turning speeds
+const TOUR_SCENE_MS = 40000;
+const TOUR_DOME_DEG_S = 1.5;
+const TOUR_GLOBE_DEG_S = 4;
+
+const COMPASS_DEG = { N: 0, NNE: 22.5, NE: 45, ENE: 67.5, E: 90, ESE: 112.5, SE: 135, SSE: 157.5, S: 180, SSW: 202.5, SW: 225, WSW: 247.5, W: 270, WNW: 292.5, NW: 315, NNW: 337.5 };
+
 /** leaf button choice stored in this browser: "eco", "full" or null (not set) */
 function ecoStored() {
   try {
@@ -310,6 +321,8 @@ class OrbitariumCard extends HTMLElement {
       night_sky: false,
       groups: null,
       performance: "auto",
+      show_passes: true,
+      screensaver: 0,
       ...config,
     };
     this._fixedHeight = config.height !== undefined && config.height !== null && config.height !== "";
@@ -425,7 +438,12 @@ class OrbitariumCard extends HTMLElement {
                background: rgba(212,175,55,0.2); color: ${GOLD}; border: 1px solid rgba(212,175,55,0.5); vertical-align: 1px; }
         .stats { text-align: right; font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums; }
         .stats b { color: ${GOLD}; font-weight: 600; }
-        .bottom { bottom: 0; padding: 8px 10px 10px; pointer-events: none; }
+        .bottom { bottom: 0; padding: 8px 10px 10px; pointer-events: none; transition: opacity 0.8s ease; }
+        .stats .pass { color: #ffd678; }
+        canvas { transition: opacity 0.7s ease; }
+        .wrap.tour .bottom, .wrap.tour .info { opacity: 0; pointer-events: none !important; }
+        .wrap.tour canvas { cursor: default; }
+        .wrap.fading canvas { opacity: 0; }
         .row { display: flex; gap: 6px; align-items: center; pointer-events: auto; }
         .chips { overflow-x: auto; scrollbar-width: none; flex: 1 1 auto; min-width: 0; padding-bottom: 2px; }
         .chips::-webkit-scrollbar { display: none; }
@@ -535,8 +553,15 @@ class OrbitariumCard extends HTMLElement {
     this._ctx = this._els.canvas.getContext("2d");
     this._bg = document.createElement("canvas");
     this._bgCtx = this._bg.getContext("2d");
-    this._els.controls.addEventListener("click", (ev) => this._onControl(ev));
-    this._els.chips.addEventListener("click", (ev) => this._onChip(ev));
+    this._lastInput = performance.now();
+    this._els.controls.addEventListener("click", (ev) => {
+      this._lastInput = performance.now();
+      this._onControl(ev);
+    });
+    this._els.chips.addEventListener("click", (ev) => {
+      this._lastInput = performance.now();
+      this._onChip(ev);
+    });
     this._els.info.addEventListener("click", (ev) => {
       if (ev.target.classList.contains("close")) {
         this._selected = null;
@@ -845,6 +870,7 @@ class OrbitariumCard extends HTMLElement {
 
   _frame() {
     if (!this._w || !this._h) return;
+    this._tourStep(performance.now());
     const ctx = this._ctx;
     const dpr = this._dpr;
     const simMs = this._simNow();
@@ -921,6 +947,10 @@ class OrbitariumCard extends HTMLElement {
 
     // ---------------- horizon + cardinals ----------------
     if (!globe) this._drawHorizon(ctx, cam, P);
+
+    // ---------------- next visible passes ----------------
+    this._passes = this._cat && this._config.show_passes !== false ? this._upcomingPasses(simMs) : [];
+    if (!globe && this._passes.length) this._drawPassPaths(ctx, cam, P, simMs);
 
     // ---------------- satellites ----------------
     let above = 0;
@@ -1949,6 +1979,343 @@ class OrbitariumCard extends HTMLElement {
     ctx.setLineDash([]);
   }
 
+  // ----------------------------------------------------------- pass paths
+
+  /** next visible passes from the Orbitarium pass sensors, refreshed every few seconds */
+  _passSensorData() {
+    const hass = this._hass;
+    if (!hass || !hass.states) return [];
+    const now = performance.now();
+    if (this._passSrc === hass && now - (this._passSrcAt || 0) < 5000) return this._passSrcList;
+    const list = [];
+    for (const st of Object.values(hass.states)) {
+      const a = st && st.attributes;
+      if (!a || a.norad_id === undefined || !("upcoming_visible" in a) || !a.visible_start) continue;
+      const start = Date.parse(a.visible_start);
+      const end = Date.parse(a.visible_end || a.pass_end);
+      if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+      const pStart = Date.parse(a.pass_start);
+      const pEnd = Date.parse(a.pass_end);
+      list.push({
+        norad: Number(a.norad_id),
+        name: String(a.satellite || a.norad_id).replace(/\s*\(.*\)\s*$/, ""),
+        start,
+        end,
+        passStart: Number.isFinite(pStart) ? Math.min(pStart, start) : start,
+        passEnd: Number.isFinite(pEnd) ? Math.max(pEnd, end) : end,
+        maxEl: Number(a.max_elevation) || 0,
+        maxTime: Date.parse(a.max_time),
+        from: a.start_direction || "",
+        to: a.end_direction || "",
+      });
+    }
+    this._passSrc = hass;
+    this._passSrcAt = now;
+    this._passSrcList = list;
+    return list;
+  }
+
+  _catIndexOf(norad) {
+    const cat = this._cat;
+    if (!cat) return -1;
+    if (this._noradIdxCat !== cat) {
+      this._noradIdx = new Map();
+      for (let i = 0; i < cat.n; i++) this._noradIdx.set(cat.norad[i], i);
+      this._noradIdxCat = cat;
+    }
+    const i = this._noradIdx.get(norad);
+    return i === undefined ? -1 : i;
+  }
+
+  /** visible passes that are running now or start within the lookahead */
+  _upcomingPasses(simMs) {
+    const out = [];
+    for (const p of this._passSensorData()) {
+      if (p.end <= simMs || p.start - simMs > PASS_LOOKAHEAD_MS) continue;
+      if (this._catIndexOf(p.norad) < 0) continue;
+      out.push(p);
+    }
+    out.sort((a, b) => a.start - b.start);
+    return out;
+  }
+
+  /** sky track of a pass as ENU vectors, computed once per pass */
+  _passPath(p) {
+    const key = `${p.norad}|${p.passStart}|${p.passEnd}|${this._cat.updated}`;
+    this._passPathCache = this._passPathCache || new Map();
+    const hit = this._passPathCache.get(key);
+    if (hit) return hit;
+    const rec = this._cat.recs[this._catIndexOf(p.norad)];
+    const lat = Number(this._config.latitude ?? this._hass.config.latitude);
+    const lon = Number(this._config.longitude ?? this._hass.config.longitude);
+    const altKm = Number(this._hass.config.elevation || 0) / 1000;
+    const tmp = new Float64Array(6);
+    const span = p.passEnd - p.passStart;
+    const step = Math.max(4000, span / 160);
+    const pts = [];
+    for (let t = p.passStart; t <= p.passEnd + 1; t += step) {
+      const jd = jdFromMs(t);
+      if (!rec || !sgp4(rec, (jd - rec.epochJd) * 1440, tmp, 0)) continue;
+      const o = observerFrame(lat, lon, altKm, gmst(jd));
+      const dx = tmp[0] - o.pos[0];
+      const dy = tmp[1] - o.pos[1];
+      const dz = tmp[2] - o.pos[2];
+      const e = dx * o.east[0] + dy * o.east[1] + dz * o.east[2];
+      const n = dx * o.north[0] + dy * o.north[1] + dz * o.north[2];
+      const u = dx * o.up[0] + dy * o.up[1] + dz * o.up[2];
+      pts.push({ t, e, n, u, vis: t >= p.start - step / 2 && t <= p.end + step / 2 });
+    }
+    // the visible window can start or end between two samples
+    const at = (t) => {
+      const jd = jdFromMs(t);
+      if (!rec || !sgp4(rec, (jd - rec.epochJd) * 1440, tmp, 0)) return null;
+      const o = observerFrame(lat, lon, altKm, gmst(jd));
+      const dx = tmp[0] - o.pos[0];
+      const dy = tmp[1] - o.pos[1];
+      const dz = tmp[2] - o.pos[2];
+      return {
+        t,
+        e: dx * o.east[0] + dy * o.east[1] + dz * o.east[2],
+        n: dx * o.north[0] + dy * o.north[1] + dz * o.north[2],
+        u: dx * o.up[0] + dy * o.up[1] + dz * o.up[2],
+        vis: true,
+      };
+    };
+    const startPt = at(p.start);
+    const endPt = at(p.end);
+    // highest point only when it lies inside the visible part, clear of both ends
+    const maxInside = Number.isFinite(p.maxTime) && p.maxTime > p.start + 20000 && p.maxTime < p.end - 20000;
+    const maxPt = maxInside ? at(p.maxTime) : null;
+    const path = { pts, startPt, endPt, maxPt };
+    if (this._passPathCache.size > 12) this._passPathCache.clear();
+    this._passPathCache.set(key, path);
+    return path;
+  }
+
+  _fmtTime(ms) {
+    const tz = this._hass?.config?.time_zone || undefined;
+    try {
+      return new Intl.DateTimeFormat(this._hass?.locale?.language || "en", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tz }).format(new Date(ms));
+    } catch (_e) {
+      return new Date(ms).toTimeString().slice(0, 5);
+    }
+  }
+
+  _drawPassPaths(ctx, cam, P, simMs) {
+    const proj = (pt) => (pt && pt.u > -1 && this._project(pt.e, pt.n, pt.u, cam, P) ? [P[0], P[1]] : null);
+    const jump = this._w / 2;
+    const labelAt = (x, y, text, align) => {
+      ctx.font = "600 10px Roboto, system-ui, sans-serif";
+      ctx.textAlign = align;
+      ctx.textBaseline = "middle";
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(5,8,16,0.85)";
+      ctx.strokeText(text, x, y);
+      ctx.fillStyle = `rgb(${PASS_COLOR})`;
+      ctx.fillText(text, x, y);
+    };
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    this._passes.forEach((p, k) => {
+      const path = this._passPath(p);
+      const active = simMs >= p.start && simMs <= p.end;
+      const strength = k === 0 ? 1 : 0.6;
+      // faint dashed line for the part in the Earth's shadow or in daylight
+      ctx.setLineDash([3, 5]);
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = `rgba(255,255,255,${0.28 * strength})`;
+      ctx.beginPath();
+      let prev = null;
+      for (const pt of path.pts) {
+        const s = proj(pt);
+        if (s && prev && Math.abs(s[0] - prev[0]) + Math.abs(s[1] - prev[1]) < jump) ctx.lineTo(s[0], s[1]);
+        else if (s) ctx.moveTo(s[0], s[1]);
+        prev = s;
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // visible part: solid, the part already flown is dimmer
+      const visPts = [path.startPt, ...path.pts.filter((pt) => pt.t > p.start && pt.t < p.end), path.endPt].filter(Boolean);
+      const drawSeg = (pts, alpha, width) => {
+        ctx.strokeStyle = `rgba(${PASS_COLOR},${alpha})`;
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        let pv = null;
+        for (const pt of pts) {
+          const s = proj(pt);
+          if (s && pv && Math.abs(s[0] - pv[0]) + Math.abs(s[1] - pv[1]) < jump) ctx.lineTo(s[0], s[1]);
+          else if (s) ctx.moveTo(s[0], s[1]);
+          pv = s;
+        }
+        ctx.stroke();
+      };
+      const done = visPts.filter((pt) => pt.t <= simMs);
+      const todo = visPts.filter((pt) => pt.t >= simMs);
+      if (done.length > 1) drawSeg(done, 0.3 * strength, 2);
+      if (todo.length > 1) drawSeg(todo, 0.85 * strength, active ? 2.6 : 2.2);
+      // arrow head at the end of the visible part
+      const n = visPts.length;
+      if (n >= 2) {
+        const a = proj(visPts[n - 2]);
+        const b = proj(visPts[n - 1]);
+        if (a && b && Math.hypot(b[0] - a[0], b[1] - a[1]) > 0.5) {
+          const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+          ctx.fillStyle = `rgba(${PASS_COLOR},${0.85 * strength})`;
+          ctx.beginPath();
+          ctx.moveTo(b[0] + Math.cos(ang) * 7, b[1] + Math.sin(ang) * 7);
+          ctx.lineTo(b[0] + Math.cos(ang + 2.5) * 7, b[1] + Math.sin(ang + 2.5) * 7);
+          ctx.lineTo(b[0] + Math.cos(ang - 2.5) * 7, b[1] + Math.sin(ang - 2.5) * 7);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+      // start, highest point and end
+      const s0 = proj(path.startPt);
+      if (s0) {
+        ctx.fillStyle = `rgba(${PASS_COLOR},${strength})`;
+        ctx.beginPath();
+        ctx.arc(s0[0], s0[1], 3.5, 0, TWO_PI);
+        ctx.fill();
+        const right = s0[0] < this._w / 2;
+        labelAt(s0[0] + (right ? 8 : -8), s0[1] - 9, `${p.name} ${this._fmtTime(p.start)}`, right ? "left" : "right");
+      }
+      const sm = proj(path.maxPt);
+      if (sm) {
+        ctx.fillStyle = `rgba(${PASS_COLOR},${strength})`;
+        ctx.beginPath();
+        ctx.moveTo(sm[0], sm[1] - 4);
+        ctx.lineTo(sm[0] + 4, sm[1]);
+        ctx.lineTo(sm[0], sm[1] + 4);
+        ctx.lineTo(sm[0] - 4, sm[1]);
+        ctx.closePath();
+        ctx.fill();
+        labelAt(sm[0] + 8, sm[1], `${Math.round(p.maxEl)}° ${this._fmtTime(p.maxTime)}`, "left");
+      }
+      const se = proj(path.endPt);
+      if (se) {
+        const right = se[0] < this._w / 2;
+        labelAt(se[0] + (right ? 10 : -10), se[1] + 10, this._fmtTime(p.end), right ? "left" : "right");
+      }
+    });
+    ctx.restore();
+  }
+
+  /** one line for the HUD: the next pass or the one running now */
+  _passSummary(simMs) {
+    const p = this._passes && this._passes[0];
+    if (!p) return "";
+    if (simMs >= p.start) return `${p.name} visible now · until ${this._fmtTime(p.end)}`;
+    const dir = p.from && p.to ? ` · ${p.from} → ${p.to}` : "";
+    return `${p.name} ${this._fmtTime(p.start)}${dir} · ${Math.round(p.maxEl)}°`;
+  }
+
+  // ----------------------------------------------------------- screensaver
+
+  _tourStep(now) {
+    const minutes = Number(this._config.screensaver) || 0;
+    if (!this._tour) {
+      if (minutes > 0 && now - (this._lastInput || now) > minutes * 60000) this._startTour(now);
+      return;
+    }
+    if (minutes <= 0) {
+      this._stopTour();
+      return;
+    }
+    const t = this._tour;
+    const dt = Math.min(0.2, (now - t.last) / 1000);
+    t.last = now;
+    // a visible pass beats the tour order: show it on the dome
+    const simMs = this._simNow();
+    const running = (this._passes || []).find((p) => simMs >= p.start - 60000 && simMs <= p.end);
+    const want = running ? "pass" : t.scenes[t.idx];
+    if (running && t.scene !== "pass") this._tourScene("pass", now);
+    else if (!running && t.scene === "pass") this._tourScene(t.scenes[t.idx], now);
+    else if (!running && now - t.since > TOUR_SCENE_MS) {
+      t.idx = (t.idx + 1) % t.scenes.length;
+      this._tourScene(t.scenes[t.idx], now);
+    }
+    const v = this._view;
+    if (want === "dome") v.az = (v.az + TOUR_DOME_DEG_S * dt) % 360;
+    else if (want === "globe") v.glon = ((v.glon + TOUR_GLOBE_DEG_S * dt + 540) % 360) - 180;
+    else if (want === "follow") {
+      const sub = this._subPoint(t.follow, simMs);
+      if (sub) {
+        v.glat = v.glat + (clamp(sub[0], -80, 80) - v.glat) * Math.min(1, dt * 2);
+        let dl = sub[1] - v.glon;
+        dl = ((dl + 540) % 360) - 180;
+        v.glon = v.glon + dl * Math.min(1, dt * 2);
+      }
+    } else if (want === "horizon") v.az = (v.az + TOUR_DOME_DEG_S * 0.6 * dt) % 360;
+  }
+
+  _startTour(now) {
+    const tracked = this._cat ? [...this._cat.tracked].find((n) => this._catIndexOf(n) >= 0) : undefined;
+    const scenes = ["dome", "globe", "horizon"];
+    if (tracked !== undefined) scenes.splice(2, 0, "follow");
+    this._tour = { scenes, idx: 0, since: now, last: now, scene: null, follow: tracked, saved: { ...this._view }, labels: this._showLabels };
+    this._selected = null;
+    this._renderInfo();
+    if (this._sim.warp !== 1 || Math.abs(this._simNow() - Date.now()) > 3000) this._goLive();
+    this._els.wrap.classList.add("tour");
+    this._tourScene(scenes[0], now);
+  }
+
+  _tourScene(name, now) {
+    const t = this._tour;
+    t.scene = name;
+    t.since = now;
+    const lat = Number(this._config.latitude ?? this._hass?.config?.latitude ?? 0);
+    const lon = Number(this._config.longitude ?? this._hass?.config?.longitude ?? 0);
+    let view;
+    if (name === "globe") view = { ...this._globeView(), glat: clamp(lat * 0.5, -60, 60), gz: 1 };
+    else if (name === "follow") {
+      const sub = this._subPoint(t.follow, this._simNow());
+      view = { ...this._globeView(), glat: sub ? clamp(sub[0], -80, 80) : lat, glon: sub ? sub[1] : lon, gz: 1.7 };
+    } else if (name === "horizon") {
+      const p = (this._passes || [])[0];
+      const az = p && p.from ? COMPASS_DEG[p.from] ?? 180 : Number(this._config.azimuth ?? 180);
+      view = { az, alt: 14, fov: 110, mode: "horizon" };
+    } else view = { az: Number(this._config.azimuth ?? 180), alt: 90, fov: 182, mode: "dome" };
+    const wrap = this._els.wrap;
+    wrap.classList.add("fading");
+    clearTimeout(this._fadeTimer);
+    this._fadeTimer = setTimeout(() => {
+      this._view = view;
+      this._bgDirty = true;
+      this._updateControls();
+      wrap.classList.remove("fading");
+    }, 700);
+  }
+
+  _stopTour() {
+    const t = this._tour;
+    if (!t) return;
+    this._tour = null;
+    clearTimeout(this._fadeTimer);
+    this._els.wrap.classList.remove("tour", "fading");
+    this._view = t.saved;
+    this._bgDirty = true;
+    this._lastInput = performance.now();
+    this._updateControls();
+  }
+
+  /** latitude and longitude (degrees) below a satellite */
+  _subPoint(norad, simMs) {
+    const i = norad === undefined ? -1 : this._catIndexOf(norad);
+    if (i < 0) return null;
+    const rec = this._cat.recs[i];
+    const tmp = new Float64Array(6);
+    const jd = jdFromMs(simMs);
+    if (!rec || !sgp4(rec, (jd - rec.epochJd) * 1440, tmp, 0)) return null;
+    const th = gmst(jd);
+    const x = Math.cos(th) * tmp[0] + Math.sin(th) * tmp[1];
+    const y = -Math.sin(th) * tmp[0] + Math.cos(th) * tmp[1];
+    const lat = Math.atan2(tmp[2], Math.hypot(x, y)) / DEG;
+    const lon = Math.atan2(y, x) / DEG;
+    return [lat, lon];
+  }
+
   // ----------------------------------------------------------------- HUD
 
   _updateHud(simMs, above, visible, sunAlt) {
@@ -1969,14 +2336,15 @@ class OrbitariumCard extends HTMLElement {
       const live = this._sim.warp === 1 && Math.abs(simMs - Date.now()) < 3000;
       this._els.clock.innerHTML = `${escapeHtml(txt)}${live ? "" : `<span class="sim">${this._w < 480 ? "SIM" : "SIMULATED"}</span>`}`;
     }
-    const key = `${above}|${visible}|${Math.round(sunAlt)}`;
+    const passTxt = this._passSummary(simMs);
+    const key = `${above}|${visible}|${Math.round(sunAlt)}|${passTxt}`;
     if (key !== this._statsKey) {
       this._statsKey = key;
       const sunTxt = sunAlt > 0 ? "Daylight" : sunAlt > -6 ? "Civil twilight" : sunAlt > -12 ? "Nautical twilight" : sunAlt > -18 ? "Astronomical twilight" : "Night";
       this._els.stats.innerHTML = this._cat
         ? this._w < 480
-          ? `<div><b>${above}</b> up · <b>${visible}</b> visible</div><div style="color:#9c947c">${sunTxt}</div>`
-          : `<div><b>${above}</b> above horizon</div><div><b>${visible}</b> visible to the eye</div><div style="color:#9c947c">${sunTxt}</div>`
+          ? `<div><b>${above}</b> up · <b>${visible}</b> visible</div><div style="color:#9c947c">${sunTxt}</div>${passTxt ? `<div class="pass">${escapeHtml(passTxt)}</div>` : ""}`
+          : `<div><b>${above}</b> above horizon</div><div><b>${visible}</b> visible to the eye</div><div style="color:#9c947c">${sunTxt}</div>${passTxt ? `<div class="pass">${escapeHtml(passTxt)}</div>` : ""}`
         : `<div style="color:#9c947c">${sunTxt}</div>`;
     }
   }
@@ -2069,6 +2437,12 @@ class OrbitariumCard extends HTMLElement {
     let drag = null;
     let pinch = null;
     c.addEventListener("pointerdown", (ev) => {
+      this._lastInput = performance.now();
+      if (this._tour) {
+        // the first touch only wakes the card up
+        this._stopTour();
+        return;
+      }
       c.setPointerCapture(ev.pointerId);
       pts.set(ev.pointerId, [ev.offsetX, ev.offsetY]);
       this._active = true;
@@ -2137,6 +2511,11 @@ class OrbitariumCard extends HTMLElement {
       (ev) => {
         if (!this._active && !ev.ctrlKey && !document.fullscreenElement) return;
         ev.preventDefault();
+        this._lastInput = performance.now();
+        if (this._tour) {
+          this._stopTour();
+          return;
+        }
         this._zoom(Math.exp(ev.deltaY * 0.0012));
       },
       { passive: false }
@@ -2419,6 +2798,8 @@ class OrbitariumCardEditor extends HTMLElement {
           satellite_icons: "Satellite icons (off: small dots)",
           night_sky: "Always dark sky (night sky switch)",
           performance: "Performance (leaf button on the card overrides this per device)",
+          show_passes: "Next visible pass of tracked satellites as a path on the sky",
+          screensaver: "Screensaver after minutes without touch (0 = off)",
         })[s.name] || s.name;
       this._form.addEventListener("value-changed", (ev) => {
         this._config = ev.detail.value;
@@ -2442,6 +2823,8 @@ class OrbitariumCardEditor extends HTMLElement {
       { name: "visible_only", selector: { boolean: {} } },
       { name: "satellite_icons", selector: { boolean: {} } },
       { name: "night_sky", selector: { boolean: {} } },
+      { name: "show_passes", selector: { boolean: {} } },
+      { name: "screensaver", selector: { number: { min: 0, max: 60, step: 1, mode: "slider" } } },
       {
         name: "performance",
         selector: {
@@ -2458,7 +2841,7 @@ class OrbitariumCardEditor extends HTMLElement {
     ];
     this._form.data = {
       title: "Orbitarium", view: "dome", fps: 30, star_limit: 6, show_constellations: true,
-      show_labels: true, show_planets: true, show_ground: true, visible_only: false, satellite_icons: true, night_sky: false, performance: "auto", ...this._config,
+      show_labels: true, show_planets: true, show_ground: true, visible_only: false, satellite_icons: true, night_sky: false, show_passes: true, screensaver: 0, performance: "auto", ...this._config,
     };
     if (this._hass) this._form.hass = this._hass;
   }
