@@ -14,7 +14,7 @@ function smooth(e0, e1, x) {
   return t * t * (3 - 2 * t);
 }
 
-async function decode(blob) {
+async function decode(blob, texW, texH) {
   let source;
   if (typeof createImageBitmap === "function") {
     source = await createImageBitmap(blob);
@@ -34,16 +34,21 @@ async function decode(blob) {
     });
   }
   const c = document.createElement("canvas");
-  c.width = TEX_W;
-  c.height = TEX_H;
+  c.width = texW;
+  c.height = texH;
   const ctx = c.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(source, 0, 0, TEX_W, TEX_H);
+  ctx.drawImage(source, 0, 0, texW, texH);
   if (source.close) source.close();
-  return ctx.getImageData(0, 0, TEX_W, TEX_H).data;
+  return ctx.getImageData(0, 0, texW, texH).data;
 }
 
-/** download both images through the authenticated API and decode them */
-export async function loadEarth(hass) {
+/**
+ * download both images through the authenticated API and decode them.
+ * texW: texture width in pixels (eco mode uses a lighter 1024 x 512 texture)
+ */
+export async function loadEarth(hass, texW) {
+  const w = texW && texW < TEX_W ? texW : TEX_W;
+  const h = Math.round((w * TEX_H) / TEX_W);
   const get = async (kind) => {
     const resp = await hass.fetchWithAuth(`/api/orbitarium/earth/${kind}`);
     if (!resp.ok) {
@@ -51,10 +56,10 @@ export async function loadEarth(hass) {
       err.status = resp.status;
       throw err;
     }
-    return decode(await resp.blob());
+    return decode(await resp.blob(), w, h);
   };
   const [day, night] = await Promise.all([get("day"), get("night").catch(() => null)]);
-  return { w: TEX_W, h: TEX_H, day, night };
+  return { w, h, day, night };
 }
 
 /**

@@ -19,7 +19,7 @@ import {
   planetPositions,
   isSunlit,
   bvToColor,
-} from "./orbitarium-core.js?v=1.5.1";
+} from "./orbitarium-core.js?v=1.6.0b1";
 import {
   KIND_DEBRIS,
   KIND_FLAT,
@@ -31,10 +31,10 @@ import {
   BODY_FACTS,
   bodyPicture,
   moonPhaseName,
-} from "./orbitarium-art.js?v=1.5.1";
-import { loadEarth, renderEarth } from "./orbitarium-earth.js?v=1.5.1";
+} from "./orbitarium-art.js?v=1.6.0b1";
+import { loadEarth, renderEarth } from "./orbitarium-earth.js?v=1.6.0b1";
 
-const CARD_VERSION = "1.5.1";
+const CARD_VERSION = "1.6.0b1";
 const GOLD = "#d4af37";
 const WARP_STEPS = [-600, -120, -30, -5, 0, 1, 5, 30, 120, 600];
 const CARDINALS = [
@@ -54,6 +54,9 @@ const SHARED = {
   earth: null,
   earthPromise: null,
   earthRetryAt: 0,
+  ecoChoice: undefined,
+  ecoHardware: undefined,
+  ecoJank: false,
 };
 
 async function apiGet(hass, path) {
@@ -230,6 +233,56 @@ function escapeHtml(s) {
 // Card
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Eco mode (per browser)
+// ---------------------------------------------------------------------------
+
+const ECO_KEY = "orbitarium-eco";
+const ECO_EVENT = "orbitarium-eco-changed";
+const ECO_FPS = 15;
+const ECO_ICON_LIMIT = 600;
+const ECO_SMALL_ICON_LIMIT = 250;
+const ECO_STAR_LIMIT = 5.0;
+const ECO_EARTH_SIZE = 480;
+const ECO_TEX_W = 1024;
+
+/** leaf button choice stored in this browser: "eco", "full" or null (not set) */
+function ecoStored() {
+  try {
+    const v = window.localStorage.getItem(ECO_KEY);
+    return v === "eco" || v === "full" ? v : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function ecoStore(value) {
+  try {
+    if (value) window.localStorage.setItem(ECO_KEY, value);
+    else window.localStorage.removeItem(ECO_KEY);
+  } catch (e) {
+    // private mode or storage disabled: the choice lasts until reload
+  }
+  SHARED.ecoChoice = value;
+  window.dispatchEvent(new CustomEvent(ECO_EVENT));
+}
+
+/** weak hardware: touch device with 4 cores or less, or 2 GB RAM or less */
+function ecoHardware() {
+  if (SHARED.ecoHardware !== undefined) return SHARED.ecoHardware;
+  let weak = false;
+  try {
+    const touch = (navigator.maxTouchPoints || 0) > 0 || (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+    const cores = Number(navigator.hardwareConcurrency) || 0;
+    const mem = Number(navigator.deviceMemory) || 0;
+    weak = (touch && cores > 0 && cores <= 4) || (mem > 0 && mem <= 2);
+  } catch (e) {
+    weak = false;
+  }
+  SHARED.ecoHardware = weak;
+  return weak;
+}
+
 class OrbitariumCard extends HTMLElement {
   static getStubConfig() {
     return { view: "dome" };
@@ -256,11 +309,12 @@ class OrbitariumCard extends HTMLElement {
       satellite_icons: true,
       night_sky: false,
       groups: null,
+      performance: "auto",
       ...config,
     };
     this._fixedHeight = config.height !== undefined && config.height !== null && config.height !== "";
     if (this._view) this._resetView();
-    if (this._els) this._resize();
+    this._applyEco();
   }
 
   // set by Home Assistant when the card is the only card of a panel view
@@ -299,11 +353,14 @@ class OrbitariumCard extends HTMLElement {
   connectedCallback() {
     if (!this._onWinResize) this._onWinResize = () => { if (this._isPanel && this._els) this._resize(); };
     window.addEventListener("resize", this._onWinResize);
+    if (!this._onEcoChange) this._onEcoChange = () => this._applyEco();
+    window.addEventListener(ECO_EVENT, this._onEcoChange);
     if (this._built) this._start();
   }
 
   disconnectedCallback() {
     if (this._onWinResize) window.removeEventListener("resize", this._onWinResize);
+    if (this._onEcoChange) window.removeEventListener(ECO_EVENT, this._onEcoChange);
     this._stop();
   }
 
@@ -382,6 +439,8 @@ class OrbitariumCard extends HTMLElement {
         button.on { background: rgba(212,175,55,0.22); border-color: rgba(212,175,55,0.8); color: #fff3cc; }
         button.icon { padding: 3px 6px; }
         button ha-icon { --mdc-icon-size: 16px; color: ${GOLD}; }
+        button.eco.on { background: rgba(76,175,80,0.22); border-color: rgba(102,212,110,0.85); }
+        button.eco.on ha-icon { color: #7ee07f; }
         .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; box-shadow: 0 0 6px currentColor; }
         .cnt { color: #9c947c; font-variant-numeric: tabular-nums; }
         .warp { min-width: 38px; text-align: center; font-size: 11px; color: ${GOLD}; font-variant-numeric: tabular-nums; }
@@ -426,7 +485,7 @@ class OrbitariumCard extends HTMLElement {
       </style>
       <ha-card>
         <div class="wrap">
-          <!-- id "slider": hass-swipe-navigation leaves gestures on #slider alone, so dragging the sky does not switch views -->
+          <!-- hass-swipe-navigation leaves gestures on #slider alone, so dragging the sky never switches views -->
           <canvas id="slider"></canvas>
           <div class="hud top">
             <div>
@@ -448,6 +507,7 @@ class OrbitariumCard extends HTMLElement {
               <button class="icon" data-act="night" title="Night sky (dark background)"><ha-icon icon="mdi:weather-night"></ha-icon></button>
               <button class="icon" data-act="zoomout" title="Zoom out"><ha-icon icon="mdi:magnify-minus-outline"></ha-icon></button>
               <button class="icon" data-act="zoomin" title="Zoom in"><ha-icon icon="mdi:magnify-plus-outline"></ha-icon></button>
+              <button class="icon eco" data-act="eco" title="Eco mode for this device"><ha-icon icon="mdi:leaf"></ha-icon></button>
               <button data-act="view" title="Switch view"><ha-icon icon="mdi:telescope"></ha-icon><span class="vlabel lbl"></span></button>
               <button class="icon" data-act="full" title="Fullscreen"><ha-icon icon="mdi:fullscreen"></ha-icon></button>
             </div>
@@ -468,6 +528,7 @@ class OrbitariumCard extends HTMLElement {
       msg: root.querySelector(".msg"),
       full: root.querySelector('[data-act="full"]'),
       night: root.querySelector('[data-act="night"]'),
+      eco: root.querySelector('[data-act="eco"]'),
     };
     this._els.title.textContent = this._config.title || "";
     if (!document.fullscreenEnabled) this._els.full.style.display = "none";
@@ -491,6 +552,7 @@ class OrbitariumCard extends HTMLElement {
     this._visObs.observe(this._els.wrap);
     this._onScreen = true;
     this._built = true;
+    this._eco = this._ecoWanted();
     this._updateControls();
     this._resize();
   }
@@ -499,12 +561,18 @@ class OrbitariumCard extends HTMLElement {
     if (this._raf || !this._built) return;
     const loop = (ts) => {
       this._raf = requestAnimationFrame(loop);
-      const minDt = 1000 / clamp(Number(this._config.fps) || 30, 5, 60);
+      const fps = clamp(Number(this._config.fps) || 30, 5, 60);
+      const minDt = 1000 / (this._eco ? Math.min(fps, ECO_FPS) : fps);
       if (this._lastFrame && ts - this._lastFrame < minDt - 1) return;
-      if (!this._onScreen || document.hidden) return;
+      if (!this._onScreen || document.hidden) {
+        this._jank = null;
+        return;
+      }
       this._lastFrame = ts;
       try {
+        const t0 = performance.now();
         this._frame();
+        this._watchJank(performance.now() - t0, minDt);
       } catch (err) {
         // keep the loop alive, show the problem once
         if (!this._frameError) {
@@ -521,6 +589,56 @@ class OrbitariumCard extends HTMLElement {
     this._raf = null;
   }
 
+  // ------------------------------------------------------------------ eco
+
+  /** leaf button first, then the card option, then auto detection */
+  _ecoWanted() {
+    if (SHARED.ecoChoice === undefined) SHARED.ecoChoice = ecoStored();
+    if (SHARED.ecoChoice) return SHARED.ecoChoice === "eco";
+    const mode = String(this._config?.performance || "auto").toLowerCase();
+    if (mode === "eco") return true;
+    if (mode === "full") return false;
+    return ecoHardware() || SHARED.ecoJank;
+  }
+
+  _applyEco() {
+    if (!this._config) return;
+    const eco = this._ecoWanted();
+    const changed = eco !== this._eco;
+    this._eco = eco;
+    if (!this._els) return;
+    if (changed) {
+      this._earthKey = null;
+      this._jank = null;
+    }
+    this._updateControls();
+    this._resize();
+  }
+
+  _toggleEco() {
+    ecoStore(this._eco ? "full" : "eco");
+  }
+
+  /** auto mode: switch to eco when frames take most of their time budget */
+  _watchJank(ms, budget) {
+    if (this._eco || SHARED.ecoJank || SHARED.ecoChoice) return;
+    if (String(this._config.performance || "auto").toLowerCase() !== "auto") return;
+    if (!this._cat || performance.now() - (this._catShownAt || 0) < 8000) return;
+    const j = this._jank || (this._jank = { n: 0, sum: 0, bad: 0 });
+    j.n += 1;
+    j.sum += ms;
+    if (j.n < 60) return;
+    const slow = j.sum / j.n > budget * 0.8;
+    j.bad = slow ? j.bad + 1 : 0;
+    j.n = 0;
+    j.sum = 0;
+    if (j.bad >= 2) {
+      SHARED.ecoJank = true;
+      console.info("orbitarium-card: frames are slow on this device, switching to eco mode");
+      window.dispatchEvent(new CustomEvent(ECO_EVENT));
+    }
+  }
+
   _resize() {
     const wrap = this._els.wrap;
     const width = wrap.clientWidth || 600;
@@ -532,7 +650,7 @@ class OrbitariumCard extends HTMLElement {
     } else if (width < 520) height = Math.round(clamp(width * 1.08, 320, 560));
     if (!document.fullscreenElement) wrap.style.height = `${height}px`;
     const h = wrap.clientHeight || height;
-    const dpr = clamp(window.devicePixelRatio || 1, 1, 2);
+    const dpr = this._eco ? 1 : clamp(window.devicePixelRatio || 1, 1, 2);
     this._w = width;
     this._h = h;
     this._dpr = dpr;
@@ -590,6 +708,7 @@ class OrbitariumCard extends HTMLElement {
     if (this._els) this._els.info.classList.remove("show");
     this._cat = cat;
     this._catLoadedAt = Date.now();
+    this._catShownAt = performance.now();
     const n = cat.n;
     this._pos = new Float64Array(n * 3);
     this._vel = new Float64Array(n * 3);
@@ -849,7 +968,8 @@ class OrbitariumCard extends HTMLElement {
   }
 
   _limitingMagnitude(sunAlt) {
-    const base = Number(this._config.star_limit) || 6.0;
+    let base = Number(this._config.star_limit) || 6.0;
+    if (this._eco) base = Math.min(base, ECO_STAR_LIMIT);
     let lim;
     if (sunAlt <= -18) lim = base;
     else if (sunAlt <= -6) lim = lerp(base, 3.5, (sunAlt + 18) / 12);
@@ -985,7 +1105,7 @@ class OrbitariumCard extends HTMLElement {
         if (m < 1.0) {
           ctx.save();
           ctx.shadowColor = sky.palette[sky.bucket[i]][5];
-          ctx.shadowBlur = 8;
+          ctx.shadowBlur = this._eco ? 0 : 8;
           ctx.beginPath();
           ctx.arc(x, y, rad, 0, TWO_PI);
           ctx.fill();
@@ -1096,7 +1216,7 @@ class OrbitariumCard extends HTMLElement {
       ctx.save();
       ctx.fillStyle = p.color;
       ctx.shadowColor = p.color;
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = this._eco ? 0 : 10;
       ctx.beginPath();
       ctx.arc(P[0], P[1], rad, 0, TWO_PI);
       ctx.fill();
@@ -1200,7 +1320,7 @@ class OrbitariumCard extends HTMLElement {
     const k = 2 * illum - 1; // -1 new .. +1 full
     ctx.fillStyle = "#f4f1e6";
     ctx.shadowColor = "rgba(255,250,230,0.6)";
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = this._eco ? 0 : 12;
     ctx.beginPath();
     ctx.arc(0, 0, r, -Math.PI / 2, Math.PI / 2, false);
     ctx.ellipse(0, 0, Math.abs(k) * r, r, 0, Math.PI / 2, -Math.PI / 2, k < 0);
@@ -1278,7 +1398,7 @@ class OrbitariumCard extends HTMLElement {
 
   _maybeLoadEarth() {
     if (SHARED.earth || SHARED.earthPromise || !this._hass || Date.now() < SHARED.earthRetryAt) return;
-    SHARED.earthPromise = loadEarth(this._hass)
+    SHARED.earthPromise = loadEarth(this._hass, this._eco ? ECO_TEX_W : undefined)
       .then((earth) => {
         SHARED.earth = earth;
         this._earthKey = null;
@@ -1294,7 +1414,7 @@ class OrbitariumCard extends HTMLElement {
 
   /** NASA imagery globe, re-rendered when the view or the sun moves */
   _globeTexture(G, sunE) {
-    const size = clamp(Math.round(2 * G.R * Math.min(this._dpr, 1.5)), 64, 760);
+    const size = this._eco ? clamp(Math.round(2 * G.R), 64, ECO_EARTH_SIZE) : clamp(Math.round(2 * G.R * Math.min(this._dpr, 1.5)), 64, 760);
     const key = `${size}|${G.view.map((x) => x.toFixed(4)).join(",")}|${sunE.map((x) => x.toFixed(3)).join(",")}`;
     if (this._earthCanvas && this._earthKey === key) return this._earthCanvas;
     this._earthCanvas = this._earthCanvas || document.createElement("canvas");
@@ -1518,7 +1638,7 @@ class OrbitariumCard extends HTMLElement {
     ctx.stroke();
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,0.85)";
-    ctx.shadowBlur = 4;
+    ctx.shadowBlur = this._eco ? 0 : 4;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     for (const [label, az] of CARDINALS) {
@@ -1633,8 +1753,8 @@ class OrbitariumCard extends HTMLElement {
       if (this._groupDots[Math.floor(b / 3)]) onScreenSmall += buckets[b].length;
       else onScreen += buckets[b].length;
     }
-    const drawIcons = icons && onScreen <= 1800;
-    const drawSmallIcons = drawIcons && onScreenSmall <= 700;
+    const drawIcons = icons && onScreen <= (this._eco ? ECO_ICON_LIMIT : 1800);
+    const drawSmallIcons = drawIcons && onScreenSmall <= (this._eco ? ECO_SMALL_ICON_LIMIT : 700);
     if (drawIcons) this._drawSatIcons(ctx, buckets, groups, drawSmallIcons);
 
     // draw: shadow first, then sunlit, then visible
@@ -1653,7 +1773,7 @@ class OrbitariumCard extends HTMLElement {
             ctx.fillRect(sx[i] - h, sy[i] - h, s, s);
           }
         }
-        if (state === 0 && dots) {
+        if (state === 0 && dots && !this._eco) {
           // soft glow for naked-eye visible satellites
           ctx.save();
           ctx.globalAlpha = 0.18;
@@ -1882,6 +2002,10 @@ class OrbitariumCard extends HTMLElement {
     this._els.warp.textContent = w === 0 ? "pause" : `${w}x`;
     const next = { dome: "Horizon", horizon: "Globe", globe: "Dome" };
     this._els.vlabel.textContent = next[this._view.mode] || "Dome";
+    if (this._els.eco) {
+      this._els.eco.classList.toggle("on", !!this._eco);
+      this._els.eco.title = this._eco ? "Eco mode on for this device (tap for full quality)" : "Eco mode for this device";
+    }
     if (this._els.night) {
       this._els.night.classList.toggle("on", !!this._forceNight);
       this._els.night.style.display = this._view.mode === "globe" ? "none" : "";
@@ -1912,6 +2036,7 @@ class OrbitariumCard extends HTMLElement {
     if (act === "slower") this._setWarp(this._sim.warpIdx - 1);
     else if (act === "faster") this._setWarp(this._sim.warpIdx + 1);
     else if (act === "now") this._goLive();
+    else if (act === "eco") this._toggleEco();
     else if (act === "zoomin") this._zoom(1 / 1.35);
     else if (act === "zoomout") this._zoom(1.35);
     else if (act === "view") {
@@ -2293,6 +2418,7 @@ class OrbitariumCardEditor extends HTMLElement {
           visible_only: "Only naked-eye visible satellites",
           satellite_icons: "Satellite icons (off: small dots)",
           night_sky: "Always dark sky (night sky switch)",
+          performance: "Performance (leaf button on the card overrides this per device)",
         })[s.name] || s.name;
       this._form.addEventListener("value-changed", (ev) => {
         this._config = ev.detail.value;
@@ -2316,10 +2442,23 @@ class OrbitariumCardEditor extends HTMLElement {
       { name: "visible_only", selector: { boolean: {} } },
       { name: "satellite_icons", selector: { boolean: {} } },
       { name: "night_sky", selector: { boolean: {} } },
+      {
+        name: "performance",
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: [
+              { value: "auto", label: "Auto (eco on weak devices)" },
+              { value: "full", label: "Full quality" },
+              { value: "eco", label: "Eco (15 fps, lighter rendering)" },
+            ],
+          },
+        },
+      },
     ];
     this._form.data = {
       title: "Orbitarium", view: "dome", fps: 30, star_limit: 6, show_constellations: true,
-      show_labels: true, show_planets: true, show_ground: true, visible_only: false, satellite_icons: true, night_sky: false, ...this._config,
+      show_labels: true, show_planets: true, show_ground: true, visible_only: false, satellite_icons: true, night_sky: false, performance: "auto", ...this._config,
     };
     if (this._hass) this._form.hass = this._hass;
   }
