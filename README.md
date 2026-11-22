@@ -148,12 +148,41 @@ show_ground: true       # false shows objects below the horizon too
 visible_only: false     # only satellites that are visible to the naked eye
 satellite_icons: true   # false draws small dots instead of icons
 night_sky: false        # true starts with a dark sky in daylight
+show_passes: true       # next visible pass of tracked satellites as a path on the sky
+screensaver: 0          # minutes without touch before the screensaver tour starts (0 = off)
+performance: auto       # auto, full or eco (the leaf button overrides it per device)
 groups:                 # groups shown when the card opens (default: all loaded groups)
   - stations
   - starlink
 latitude: 8.03          # optional override of the home location
 longitude: 98.82
 ```
+
+## Pass paths
+
+The next naked-eye pass of every tracked satellite (ISS and Tiangong by default) within the next 12 hours is drawn as a golden arc on the dome and horizon views: a dot with name and time where it becomes visible, a diamond with elevation and time at its highest point and an arrow with the time where it fades into the Earth's shadow or sets. The part that is not visible to the eye is dashed. The top right corner shows the next pass in one line, for example `ISS 19:15 · NNW → SE · 67°`, and `ISS visible now · until 19:21` while it is up.
+
+The paths use the same data as the *next visible pass* sensors, so the card, the sensors and the pass alert blueprint always agree. Turn them off with `show_passes: false`.
+
+## Screensaver
+
+For wall tablets: with `screensaver: 5` the card starts a slow tour after 5 minutes without touch. It changes scene every 40 seconds with a soft fade: the whole sky slowly turning, the globe slowly turning, the globe following the ISS and the horizon towards where the next pass rises. Buttons and chips are hidden during the tour. When a visible pass starts, the tour switches to the dome so you see it. The first touch ends the tour and brings back your previous view.
+
+## Eco mode
+
+The leaf button in the toolbar switches every Orbitarium card in this browser to eco mode, and it turns green. The choice is stored per browser, so the wall tablet can run in eco mode while your desktop keeps full quality.
+
+| | Full quality | Eco |
+| --- | --- | --- |
+| Frames per second | 30 (or `fps`) | 15 |
+| Resolution | Retina | Normal (1x) |
+| Earth image in the globe | Full NASA texture | Lighter texture, smaller render |
+| Satellite icons | Up to 1,800 on screen | Up to 600, dots above that |
+| Rocket body and debris icons | Up to 700 | Up to 250 |
+| Glow effects | On | Off |
+| Faintest stars | `star_limit` | Magnitude 5 at most |
+
+With `performance: auto` (default) the card switches to eco by itself on touch devices with 4 CPU cores or less, on devices with 2 GB RAM or less, or when frames are clearly too slow. `full` and `eco` fix the mode. The leaf button always wins over this option.
 
 ## Performance tips
 
@@ -162,7 +191,7 @@ Orbitarium draws every satellite of the selected groups in every frame. Starlink
 | Device | Recommendation |
 | --- | --- |
 | Desktop browser, recent phone or tablet | Defaults are fine (`fps: 30`, icons on) |
-| Older tablet, Fire tablet, wall panel | `fps: 15`, show only the groups you care about |
+| Older tablet, Fire tablet, wall panel | Eco mode (leaf button or `performance: eco`), show only the groups you care about |
 | Very weak hardware | `fps: 10`, `satellite_icons: false` (small dots), Starlink group switched off |
 
 ```yaml

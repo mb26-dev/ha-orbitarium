@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.0
+
+### Added
+
+- **Eco mode for wall tablets:** a leaf button in the toolbar switches every Orbitarium card in this browser to a lighter mode, and the button turns green: 15 instead of 30 frames per second, normal instead of Retina resolution, a lighter Earth image, fewer icons before the card switches to dots, no glow effects and stars down to magnitude 5. The choice is stored per browser.
+- **Card option `performance`:** `auto` (default), `full` or `eco`. With `auto` the card switches to eco by itself on touch devices with 4 CPU cores or less, on devices with 2 GB RAM or less, or when frames are clearly too slow. The leaf button always wins.
+- **Pass paths on the sky:** the next naked-eye pass of every tracked satellite within 12 hours is drawn as a golden arc on the dome and horizon views, with start, highest point and end and their times. The part already flown turns dim during the pass. The top right corner shows the next pass in one line. Card option `show_passes` (default `true`).
+- **Screensaver:** card option `screensaver` (minutes, default `0` = off). After that time without touch the card tours through the turning sky, the turning globe, the globe following the ISS and the horizon towards the next pass, with a soft fade every 40 seconds. A visible pass always wins, and the first touch brings back your view.
+
 ## 1.5.1
 
 ### Fixed
