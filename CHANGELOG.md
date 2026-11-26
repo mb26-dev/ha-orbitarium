@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.1 - 2026-11-27
+
+- **Safe rendering:** Card: image addresses in the info panel are escaped.
+
 ## 1.6.0
 
 ### Added

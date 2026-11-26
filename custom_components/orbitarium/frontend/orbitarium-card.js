@@ -34,7 +34,7 @@ import {
 } from "./orbitarium-art.js?v=1.6.0";
 import { loadEarth, renderEarth } from "./orbitarium-earth.js?v=1.6.0";
 
-const CARD_VERSION = "1.6.0";
+const CARD_VERSION = "1.6.1";
 const GOLD = "#d4af37";
 const WARP_STEPS = [-600, -120, -30, -5, 0, 1, 5, 30, 120, 600];
 const CARDINALS = [
@@ -2748,7 +2748,7 @@ class OrbitariumCard extends HTMLElement {
       const pic = bodyPicture(b.name, b.illum, b.angle);
       const cell = ([k, v]) => `<span>${escapeHtml(k)}</span><span>${escapeHtml(v)}</span>`;
       el.innerHTML = `<button class="close" title="Close">×</button>
-        <div class="bhead"><img class="bpic${b.name === "Saturn" ? " wide" : ""}" src="${pic}" alt="">
+        <div class="bhead"><img class="bpic${b.name === "Saturn" ? " wide" : ""}" src="${escapeHtml(pic)}" alt="">
           <div><div class="name">${escapeHtml(b.name)}</div><div class="sub">${escapeHtml(sub)}</div></div></div>
         <div class="grid">${live.map(cell).join("")}</div>
         ${info.facts.length ? `<div class="sep"></div><div class="grid facts">${info.facts.map(cell).join("")}</div>` : ""}
@@ -2758,7 +2758,7 @@ class OrbitariumCard extends HTMLElement {
       return;
     }
     el.classList.remove("body");
-    el.innerHTML = `<button class="close" title="Close">×</button>${picture ? `<img class="pic" src="${picture}" alt="">` : ""}<div class="name">${escapeHtml(title)}</div><div class="grid">${rows
+    el.innerHTML = `<button class="close" title="Close">×</button>${picture ? `<img class="pic" src="${escapeHtml(picture)}" alt="">` : ""}<div class="name">${escapeHtml(title)}</div><div class="grid">${rows
       .map(([k, v]) => `<span>${escapeHtml(k)}</span><span>${escapeHtml(v)}</span>`)
       .join("")}</div>`;
     el.classList.add("show");
