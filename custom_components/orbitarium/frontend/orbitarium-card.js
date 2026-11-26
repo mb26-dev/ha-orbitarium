@@ -141,6 +141,11 @@ function prepareSky(raw) {
   return { n, vec, mag, bucket, order, lines, cons, names, palette, land };
 }
 
+function safeColor(c) {
+  const v = String(c ?? "").trim();
+  return /^#[0-9a-f]{3,8}$/i.test(v) || /^rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*(,\s*[\d.]+\s*)?\)$/i.test(v) || /^[a-z]{3,20}$/i.test(v) ? v : GOLD;
+}
+
 function prepareCatalog(raw) {
   const rows = raw.sats || [];
   const n = rows.length;
@@ -162,7 +167,9 @@ function prepareCatalog(raw) {
     }
   }
   const tracked = new Set(raw.tracked || []);
-  return { n, recs, names, norad, group, groups: raw.groups || [], tracked, updated: raw.updated, ok };
+  // group colours end up in style attributes, SVG pictures and the canvas: only plain colour values pass
+  const groups = (Array.isArray(raw.groups) ? raw.groups : []).map((g) => ({ ...g, color: safeColor(g && g.color) }));
+  return { n, recs, names, norad, group, groups, tracked, updated: raw.updated, ok };
 }
 
 function loadSky(hass) {
