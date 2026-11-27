@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Default-41BDF5.svg" alt="HACS Default"></a>
-  <a href="https://github.com/mb26-dev/ha-orbitarium/releases"><img src="https://img.shields.io/badge/release-v1.6.1-blue" alt="Release v1.6.1"></a>
+  <a href="https://github.com/mb26-dev/ha-orbitarium/releases"><img src=".github/badge-release.svg" alt="Release v1.6.1"></a>
   <img src="https://img.shields.io/badge/Home%20Assistant-2025.1%2B-blue" alt="Home Assistant">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License MIT">
   <a href="https://ko-fi.com/mb26dev"><img src="https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-FF5E5B?logo=ko-fi&logoColor=white" alt="Buy me a coffee on Ko-fi"></a>
